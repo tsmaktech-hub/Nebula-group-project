@@ -40,12 +40,12 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, activeCourse 
           </div>
           
           {/* Right Side: Lecturer Info and Logout Action */}
-          <div className="flex items-center gap-2 sm:gap-5">
+          <div className="flex items-center gap-2 sm:gap-4">
             <div className="flex flex-col items-end leading-tight text-right">
-              <span className="hidden xs:block text-[7px] sm:text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-0.5">
-                lead lecturer:
+              <span className="text-[7px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                Lead Lecturer:
               </span>
-              <span className="font-black text-blue-700 text-[10px] sm:text-sm uppercase tracking-tight max-w-[120px] sm:max-w-none truncate">
+              <span className="font-black text-blue-700 text-[10px] sm:text-sm uppercase tracking-tight max-w-[100px] sm:max-w-[200px] truncate">
                 {user.name}
               </span>
             </div>
