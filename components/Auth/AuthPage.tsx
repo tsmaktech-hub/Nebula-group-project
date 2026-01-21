@@ -1,7 +1,11 @@
 
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Info } from 'lucide-react';
+import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Globe, Loader2 } from 'lucide-react';
 import { User } from '../../types';
+
+// Institutional Cloud Configuration
+const CLOUD_BUCKET = 'lasustech_registry_v1_8822';
+const CLOUD_URL = `https://kvdb.io/${CLOUD_BUCKET}/`;
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -9,6 +13,7 @@ interface AuthPageProps {
 
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [formData, setFormData] = useState({
     name: '',
@@ -17,41 +22,66 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     password: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRegistering) {
-      const registeredUsers = JSON.parse(localStorage.getItem('registered_lecturers') || '[]');
-      
-      if (registeredUsers.some((u: any) => u.courseCode === formData.courseCode)) {
-        alert("This course code is already registered to a lecturer.");
-        return;
-      }
+    setIsLoading(true);
 
-      const newUser = { 
-        ...formData, 
-        username: formData.courseCode,
-        syncDate: new Date().toISOString() 
-      };
-      
-      registeredUsers.push(newUser);
-      localStorage.setItem('registered_lecturers', JSON.stringify(registeredUsers));
-      
-      setSuccessMsg('Registration Successful! Account created on this device.');
-      setTimeout(() => {
-        setIsRegistering(false);
-        setSuccessMsg('');
-        setFormData({ ...formData, password: '' });
-      }, 2000);
+    try {
+      if (isRegistering) {
+        // 1. Check if course already exists in Cloud
+        const checkRes = await fetch(`${CLOUD_URL}${formData.courseCode.toLowerCase()}`);
+        if (checkRes.ok) {
+          const existing = await checkRes.json();
+          if (existing) {
+            alert("Error: This Course Code is already registered in the LASUSTECH Cloud.");
+            setIsLoading(false);
+            return;
+          }
+        }
 
-    } else {
-      const registeredUsers: User[] = JSON.parse(localStorage.getItem('registered_lecturers') || '[]');
-      const user = registeredUsers.find(u => u.courseCode === formData.courseCode && u.password === formData.password);
-      
-      if (user) {
-        onLogin(user);
+        const newUser = { 
+          ...formData, 
+          username: formData.courseCode,
+          courseCode: formData.courseCode.toUpperCase(),
+          syncDate: new Date().toISOString() 
+        };
+        
+        // 2. Push to Cloud
+        await fetch(`${CLOUD_URL}${formData.courseCode.toLowerCase()}`, {
+          method: 'POST',
+          body: JSON.stringify(newUser)
+        });
+        
+        setSuccessMsg('Registration Successful! You can now login from any device.');
+        setTimeout(() => {
+          setIsRegistering(false);
+          setSuccessMsg('');
+          setIsLoading(false);
+          setFormData({ ...formData, password: '' });
+        }, 2000);
+
       } else {
-        alert("Authentication failed. Note: Accounts are currently stored locally on the device they were created on. Please 'Create Account' on this phone if you haven't yet.");
+        // Login Logic - Pull from Cloud
+        const response = await fetch(`${CLOUD_URL}${formData.courseCode.toLowerCase()}`);
+        if (!response.ok) {
+          throw new Error("Course not found in Cloud Registry.");
+        }
+        
+        const cloudUser: User = await response.json();
+        
+        if (cloudUser && cloudUser.password === formData.password) {
+          // Sync local storage for faster future boots
+          localStorage.setItem('registered_lecturers', JSON.stringify([cloudUser]));
+          onLogin(cloudUser);
+        } else {
+          alert("Authentication Failed: Security key is incorrect for this Course Code.");
+        }
+        setIsLoading(false);
       }
+    } catch (err) {
+      console.error(err);
+      alert("Cloud Connection Error: Please check your internet connection.");
+      setIsLoading(false);
     }
   };
 
@@ -59,9 +89,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     <div className="flex flex-col items-center justify-center p-4 min-h-[85vh]">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8 border border-slate-100 relative">
         <div className="absolute top-0 right-0 p-5">
-          <div className="flex items-center gap-1.5 text-blue-500/30">
-            <ShieldCheck size={14} />
-            <span className="text-[8px] font-black uppercase tracking-widest">Secured</span>
+          <div className="flex items-center gap-1.5 text-blue-500">
+            <Globe size={14} className="animate-pulse" />
+            <span className="text-[8px] font-black uppercase tracking-widest">Global Cloud</span>
           </div>
         </div>
 
@@ -70,10 +100,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             <UserIcon size={28} className="text-white -rotate-3 sm:size-10" />
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 text-center leading-tight">
-            {isRegistering ? 'Lecturer Signup' : 'Lecturer Login'}
+            {isRegistering ? 'Initialize Account' : 'Lecturer Login'}
           </h1>
           <p className="text-blue-500 font-bold text-[9px] tracking-[0.3em] uppercase mt-1">
-            LASUSTECH CLOUD PORTAL
+            Attendance portal v2.1
           </p>
         </div>
 
@@ -98,6 +128,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
                     placeholder="e.g. Dr. Samuel Kola"
                     required
+                    disabled={isLoading}
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                   />
@@ -118,6 +149,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold uppercase text-sm"
                   placeholder="e.g. CHM102"
                   required
+                  disabled={isLoading}
                   value={formData.courseCode}
                   onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
                 />
@@ -135,6 +167,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
                   placeholder="••••••••"
                   required
+                  disabled={isLoading}
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
                 />
@@ -143,10 +176,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
             <button 
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all group active:scale-95 text-sm mt-2"
+              disabled={isLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all group active:scale-95 text-sm mt-2 disabled:opacity-50"
             >
-              {isRegistering ? 'Initialize Account' : 'Secure Access'}
-              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : isRegistering ? 'Initialize Account' : 'Secure Access'}
+              {!isLoading && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
             </button>
           </form>
         )}
@@ -168,10 +204,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
           </button>
 
           <div className="pt-4 border-t border-slate-50">
-            <div className="inline-flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
-              <Info size={10} className="text-slate-400" />
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                Device-specific storage active
+            <div className="inline-flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+              <Globe size={10} className="text-blue-400" />
+              <span className="text-[8px] font-black text-blue-600 uppercase tracking-tighter">
+                Institutional Sync Active (Cross-Device)
               </span>
             </div>
           </div>
