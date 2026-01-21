@@ -1,0 +1,7 @@
+{
+  "name": "LASUSTECH Digital Attendance System",
+  "description": "A comprehensive attendance management portal for LASUSTECH lecturers to manage students across colleges, departments, and course levels.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
