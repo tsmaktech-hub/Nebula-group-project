@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Globe, Loader2 } from 'lucide-react';
+import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Globe, Loader2, AlertCircle } from 'lucide-react';
 import { User } from '../../types';
 
 // Institutional Cloud Configuration
+// Note: In production, these would be environment variables and use a dedicated backend like Firebase/Supabase
 const CLOUD_BUCKET = 'lasustech_registry_v1_8822';
 const CLOUD_URL = `https://kvdb.io/${CLOUD_BUCKET}/`;
 
@@ -15,6 +16,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     courseCode: '',
@@ -25,15 +27,18 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMsg('');
+
+    const normalizedCode = formData.courseCode.trim().toLowerCase();
 
     try {
       if (isRegistering) {
         // 1. Check if course already exists in Cloud
-        const checkRes = await fetch(`${CLOUD_URL}${formData.courseCode.toLowerCase()}`);
+        const checkRes = await fetch(`${CLOUD_URL}${normalizedCode}`);
         if (checkRes.ok) {
           const existing = await checkRes.json();
           if (existing) {
-            alert("Error: This Course Code is already registered in the LASUSTECH Cloud.");
+            setErrorMsg("This Course Code is already registered. Please login instead.");
             setIsLoading(false);
             return;
           }
@@ -46,13 +51,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
           syncDate: new Date().toISOString() 
         };
         
-        // 2. Push to Cloud
-        await fetch(`${CLOUD_URL}${formData.courseCode.toLowerCase()}`, {
-          method: 'POST',
+        // 2. Push to Cloud using PUT (Standard for KVDB)
+        const saveRes = await fetch(`${CLOUD_URL}${normalizedCode}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newUser)
         });
+
+        if (!saveRes.ok) throw new Error("Cloud sync failed");
         
-        setSuccessMsg('Registration Successful! You can now login from any device.');
+        setSuccessMsg('Registration Successful! Account is now synced to the Cloud.');
         setTimeout(() => {
           setIsRegistering(false);
           setSuccessMsg('');
@@ -62,25 +70,32 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
       } else {
         // Login Logic - Pull from Cloud
-        const response = await fetch(`${CLOUD_URL}${formData.courseCode.toLowerCase()}`);
+        const response = await fetch(`${CLOUD_URL}${normalizedCode}`);
+        
+        if (response.status === 404) {
+          setErrorMsg("Account not found. If this is your first time, please use the 'Create Account' option below.");
+          setIsLoading(false);
+          return;
+        }
+
         if (!response.ok) {
-          throw new Error("Course not found in Cloud Registry.");
+          throw new Error("Cloud connection interrupted.");
         }
         
         const cloudUser: User = await response.json();
         
         if (cloudUser && cloudUser.password === formData.password) {
-          // Sync local storage for faster future boots
-          localStorage.setItem('registered_lecturers', JSON.stringify([cloudUser]));
+          // Sync local storage for persistence on this device
+          localStorage.setItem('lasustech_user', JSON.stringify(cloudUser));
           onLogin(cloudUser);
         } else {
-          alert("Authentication Failed: Security key is incorrect for this Course Code.");
+          setErrorMsg("Security key is incorrect for this Course Code.");
         }
         setIsLoading(false);
       }
     } catch (err) {
       console.error(err);
-      alert("Cloud Connection Error: Please check your internet connection.");
+      setErrorMsg("Connection Error: Unable to reach LASUSTECH Cloud. Check your data connection.");
       setIsLoading(false);
     }
   };
@@ -106,6 +121,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             Attendance portal v2.1
           </p>
         </div>
+
+        {errorMsg && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
+            <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+            <p className="text-red-700 text-xs font-bold leading-tight">{errorMsg}</p>
+          </div>
+        )}
 
         {successMsg ? (
           <div className="py-12 flex flex-col items-center text-center space-y-4 animate-in fade-in duration-500">
@@ -192,7 +214,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             onClick={() => {
               setIsRegistering(!isRegistering);
               setSuccessMsg('');
-              setFormData({ name: '', courseCode: '', username: '', password: '' });
+              setErrorMsg('');
+              setFormData({ ...formData, password: '' });
             }}
             className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-1 mx-auto"
           >
