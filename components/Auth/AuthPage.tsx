@@ -32,16 +32,21 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       const lecturers: User[] = rawData ? JSON.parse(rawData) : [];
 
       if (isRegistering) {
-        const exists = lecturers.find(l => l.courseCode === normalizedCode);
-        if (exists) {
-          setErrorMsg("This Course Code is already registered on this device.");
+        // Allow multiple signups for the same course code.
+        // We only block if the exact combination of course code and security key already exists.
+        const duplicateEntry = lecturers.find(
+          l => l.courseCode === normalizedCode && l.password === formData.password
+        );
+
+        if (duplicateEntry) {
+          setErrorMsg("This exact account (Course & Key) is already registered on this device.");
           setIsLoading(false);
           return;
         }
 
         const newUser: User = { 
           ...formData, 
-          username: formData.courseCode,
+          username: normalizedCode, // Distinguish username if needed, but here we use courseCode
           courseCode: normalizedCode,
         };
         
@@ -57,19 +62,18 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         }, 2000);
 
       } else {
-        const user = lecturers.find(l => l.courseCode === normalizedCode);
+        // Login now requires finding a user that matches BOTH course code and security key
+        const user = lecturers.find(
+          l => l.courseCode === normalizedCode && l.password === formData.password
+        );
         
         if (!user) {
-          setErrorMsg("Lecturer account not found. Please create an account first.");
+          setErrorMsg("Invalid Course Code or Security Key combination.");
           setIsLoading(false);
           return;
         }
         
-        if (user.password === formData.password) {
-          onLogin(user);
-        } else {
-          setErrorMsg("Security key is incorrect for this Course Code.");
-        }
+        onLogin(user);
         setIsLoading(false);
       }
     }, 800);
