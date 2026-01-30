@@ -16,7 +16,8 @@ export const generateStudents = (deptId: string): Student[] => {
       id: `student-${deptId}-${i}`,
       name: `${fn} ${ln}`,
       matricNo: `LASU/${deptCode}/2023/${paddedId}`,
-      attendancePercentage: 0, // All students start at 0% as requested
+      attendancePercentage: 0,
+      classesAttended: 0,
     });
   }
   return students;

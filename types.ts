@@ -11,6 +11,7 @@ export interface Student {
   name: string;
   matricNo: string;
   attendancePercentage: number;
+  classesAttended: number;
 }
 
 export interface Course {

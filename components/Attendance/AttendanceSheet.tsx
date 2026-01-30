@@ -1,11 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CloudUpload, CheckCircle, GraduationCap, Users, Loader2, Globe } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, Users, Loader2, HardDrive, BookOpen } from 'lucide-react';
 import { Course, Department, Student } from '../../types';
 import { generateStudents } from '../../data/studentData';
-
-const CLOUD_BUCKET = 'lasustech_attendance_v1_8822';
-const CLOUD_URL = `https://kvdb.io/${CLOUD_BUCKET}/`;
 
 interface AttendanceSheetProps {
   course: Course;
@@ -13,46 +10,40 @@ interface AttendanceSheetProps {
   onBack: () => void;
 }
 
+interface StorageData {
+  classesHeld: number;
+  students: Student[];
+}
+
 const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack }) => {
   const [students, setStudents] = useState<Student[]>([]);
+  const [classesHeld, setClassesHeld] = useState<number>(0);
   const [markedIds, setMarkedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const storageKey = `attendance_${dept.id}_${course.code.toLowerCase()}`;
+  const storageKey = `attendance_data_${dept.id}_${course.code.toLowerCase()}`;
 
   useEffect(() => {
-    const fetchAttendance = async () => {
+    const fetchAttendance = () => {
       setIsLoading(true);
-      try {
-        // Attempt to fetch from Cloud first for cross-device consistency
-        const response = await fetch(`${CLOUD_URL}${storageKey}`);
-        if (response.ok) {
-          const cloudData = await response.json();
-          if (cloudData && Array.isArray(cloudData)) {
-            setStudents(cloudData);
-            setIsLoading(false);
-            return;
-          }
-        }
-        
-        // Fallback: Check local or generate new
-        const cached = localStorage.getItem(storageKey);
-        if (cached) {
-          setStudents(JSON.parse(cached));
-        } else {
-          const generated = generateStudents(dept.id);
-          setStudents(generated);
-          localStorage.setItem(storageKey, JSON.stringify(generated));
-        }
-      } catch (err) {
-        console.error("Cloud fetch failed, using local fallback", err);
-        const cached = localStorage.getItem(storageKey);
-        if (cached) setStudents(JSON.parse(cached));
-      } finally {
-        setIsLoading(false);
+      
+      const cached = localStorage.getItem(storageKey);
+      if (cached) {
+        const data: StorageData = JSON.parse(cached);
+        // Ensure backward compatibility or initial state
+        setStudents(data.students || []);
+        setClassesHeld(data.classesHeld || 0);
+      } else {
+        const generated = generateStudents(dept.id);
+        setStudents(generated);
+        setClassesHeld(0);
+        const initialData: StorageData = { classesHeld: 0, students: generated };
+        localStorage.setItem(storageKey, JSON.stringify(initialData));
       }
+      
+      setTimeout(() => setIsLoading(false), 600);
     };
 
     fetchAttendance();
@@ -65,29 +56,35 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
     setMarkedIds(next);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (markedIds.size === 0) return;
     setIsSaving(true);
     
-    try {
-      const updatedStudents = students.map(s => {
-        if (markedIds.has(s.id)) {
-          const increment = 100 / 14; 
-          const newPerc = Math.min(100, s.attendancePercentage + increment);
-          return { ...s, attendancePercentage: Math.round(newPerc * 100) / 100 };
-        }
-        return s;
-      });
+    const nextClassesHeld = classesHeld + 1;
+    
+    const updatedStudents = students.map(s => {
+      const isPresent = markedIds.has(s.id);
+      const newClassesAttended = isPresent ? s.classesAttended + 1 : s.classesAttended;
       
-      // 1. Update Cloud
-      await fetch(`${CLOUD_URL}${storageKey}`, {
-        method: 'POST',
-        body: JSON.stringify(updatedStudents)
-      });
+      // Percentage = (Attended / Total Held) * 100
+      const newPerc = (newClassesAttended / nextClassesHeld) * 100;
       
-      // 2. Update Local
+      return { 
+        ...s, 
+        classesAttended: newClassesAttended,
+        attendancePercentage: Math.round(newPerc * 100) / 100 
+      };
+    });
+    
+    setTimeout(() => {
       setStudents(updatedStudents);
-      localStorage.setItem(storageKey, JSON.stringify(updatedStudents));
+      setClassesHeld(nextClassesHeld);
+      
+      const saveData: StorageData = {
+        classesHeld: nextClassesHeld,
+        students: updatedStudents
+      };
+      localStorage.setItem(storageKey, JSON.stringify(saveData));
       
       setIsSaving(false);
       setShowSuccess(true);
@@ -95,17 +92,14 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       
       setTimeout(() => setShowSuccess(false), 3000);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      alert("Sync Failed: Record could not be pushed to Cloud. Check internet connection.");
-      setIsSaving(false);
-    }
+    }, 800);
   };
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-40 space-y-4">
         <Loader2 size={40} className="text-blue-600 animate-spin" />
-        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Fetching Cloud Records...</p>
+        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Loading Device Records...</p>
       </div>
     );
   }
@@ -124,7 +118,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
             <div className="w-1.5 h-16 bg-blue-600 rounded-full"></div>
             <div>
               <p className="text-[10px] font-black text-blue-400 tracking-[0.3em] uppercase mb-1 flex items-center gap-2">
-                Cloud Session <Globe size={10} />
+                Local Archive <HardDrive size={10} />
               </p>
               <h1 className="text-2xl font-black text-slate-800 leading-tight">
                 {course.title} ({course.code})
@@ -141,23 +135,33 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
                </div>
                <div>
                  <h2 className="text-xl font-black">Student Roster</h2>
-                 <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">{students.length} Candidates Synced</p>
+                 <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">{students.length} Total Registered</p>
                </div>
              </div>
              <div className="text-right">
-               <p className="text-[9px] font-black text-blue-200 uppercase tracking-widest">Global Status</p>
-               <p className="text-lg font-black uppercase">Online</p>
+               <p className="text-[9px] font-black text-blue-200 uppercase tracking-widest">Device Status</p>
+               <p className="text-lg font-black uppercase">Online Safe</p>
              </div>
            </div>
            
-           <div className="flex items-center justify-between bg-blue-700/40 rounded-[20px] p-4 border border-blue-400/20">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-[9px] font-black uppercase tracking-widest text-green-300">Sync with Institution Cloud</span>
-              </div>
-              <div className="text-[9px] font-black uppercase text-blue-200">
-                {markedIds.size} Marked Present
-              </div>
+           <div className="flex flex-col sm:flex-row gap-4">
+             <div className="flex-1 flex items-center justify-between bg-blue-700/40 rounded-[20px] p-4 border border-blue-400/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-green-300">Internal Storage Enabled</span>
+                </div>
+                <div className="text-[9px] font-black uppercase text-blue-200">
+                  {markedIds.size} Selected Today
+                </div>
+             </div>
+             
+             <div className="flex items-center gap-3 bg-white/10 px-6 py-4 rounded-[20px] border border-white/5">
+                <BookOpen size={16} className="text-yellow-400" />
+                <div className="flex flex-col">
+                  <span className="text-[8px] font-black uppercase tracking-tighter text-blue-200">Classes Held</span>
+                  <span className="text-sm font-black text-white leading-none">{classesHeld} Sessions</span>
+                </div>
+             </div>
            </div>
         </div>
       </div>
@@ -181,9 +185,11 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
               </div>
 
               <div className="flex items-center gap-4 sm:gap-8">
-                 <div className="text-right">
-                    <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Score</p>
-                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${student.attendancePercentage > 70 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                 <div className="text-right flex flex-col items-end">
+                    <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">
+                      {student.classesAttended} / {classesHeld}
+                    </p>
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${student.attendancePercentage >= 70 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
                       {student.attendancePercentage}%
                     </span>
                  </div>
@@ -216,23 +222,23 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
             {isSaving ? (
               <>
                 <Loader2 size={20} className="animate-spin" />
-                <span>Broadcasting to Cloud...</span>
+                <span>Syncing Record...</span>
               </>
             ) : showSuccess ? (
               <>
                 <CheckCircle size={20} />
-                <span>Cloud Sync Complete</span>
+                <span>Attendance Logged</span>
               </>
             ) : (
               <>
-                <CloudUpload size={20} />
-                <span>Sync Attendance Record</span>
+                <Save size={20} />
+                <span>Sync Record</span>
               </>
             )}
           </button>
 
           <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest text-center max-w-xs leading-relaxed">
-            Universal Institutional Storage Enabled • Records are synchronized across all devices in real-time.
+            Data is stored locally on this device. <br/> Records will persist until the browser cache is cleared.
           </p>
         </div>
       </div>

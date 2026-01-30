@@ -19,6 +19,8 @@ enum View {
   Attendance = 'attendance'
 }
 
+const INACTIVITY_LIMIT = 60000; // 1 minute in milliseconds
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<View>(View.Auth);
@@ -29,7 +31,7 @@ const App: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
 
-  // Auth check
+  // Auth check on mount
   useEffect(() => {
     const savedUser = localStorage.getItem('lasustech_user');
     if (savedUser) {
@@ -38,13 +40,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('lasustech_user', JSON.stringify(user));
-    setCurrentView(View.Colleges);
-  };
-
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setCurrentUser(null);
     setCurrentView(View.Auth);
     localStorage.removeItem('lasustech_user');
@@ -53,6 +49,53 @@ const App: React.FC = () => {
     setSelectedDept(null);
     setSelectedLevel(null);
     setSelectedCourse(null);
+  }, []);
+
+  // Inactivity Timer Logic
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let timeoutId: number;
+
+    const resetTimer = () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => {
+        handleLogout();
+        alert("Session Expired: You have been logged out due to 1 minute of inactivity.");
+      }, INACTIVITY_LIMIT);
+    };
+
+    // Events that signify activity
+    const activityEvents = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click'
+    ];
+
+    // Initialize timer
+    resetTimer();
+
+    // Add listeners
+    activityEvents.forEach(event => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    // Cleanup
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [currentUser, handleLogout]);
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    localStorage.setItem('lasustech_user', JSON.stringify(user));
+    setCurrentView(View.Colleges);
   };
 
   const renderView = () => {

@@ -1,12 +1,7 @@
 
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Globe, Loader2, AlertCircle } from 'lucide-react';
+import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Loader2, AlertCircle, Globe } from 'lucide-react';
 import { User } from '../../types';
-
-// Institutional Cloud Configuration
-// Note: In production, these would be environment variables and use a dedicated backend like Firebase/Supabase
-const CLOUD_BUCKET = 'lasustech_registry_v1_8822';
-const CLOUD_URL = `https://kvdb.io/${CLOUD_BUCKET}/`;
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -24,43 +19,36 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     password: ''
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
 
-    const normalizedCode = formData.courseCode.trim().toLowerCase();
+    // Simulate small delay for better UX feel
+    setTimeout(() => {
+      const normalizedCode = formData.courseCode.trim().toUpperCase();
+      const storageKey = 'registered_lecturers';
+      const rawData = localStorage.getItem(storageKey);
+      const lecturers: User[] = rawData ? JSON.parse(rawData) : [];
 
-    try {
       if (isRegistering) {
-        // 1. Check if course already exists in Cloud
-        const checkRes = await fetch(`${CLOUD_URL}${normalizedCode}`);
-        if (checkRes.ok) {
-          const existing = await checkRes.json();
-          if (existing) {
-            setErrorMsg("This Course Code is already registered. Please login instead.");
-            setIsLoading(false);
-            return;
-          }
+        const exists = lecturers.find(l => l.courseCode === normalizedCode);
+        if (exists) {
+          setErrorMsg("This Course Code is already registered on this device.");
+          setIsLoading(false);
+          return;
         }
 
-        const newUser = { 
+        const newUser: User = { 
           ...formData, 
           username: formData.courseCode,
-          courseCode: formData.courseCode.toUpperCase(),
-          syncDate: new Date().toISOString() 
+          courseCode: normalizedCode,
         };
         
-        // 2. Push to Cloud using PUT (Standard for KVDB)
-        const saveRes = await fetch(`${CLOUD_URL}${normalizedCode}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newUser)
-        });
-
-        if (!saveRes.ok) throw new Error("Cloud sync failed");
+        lecturers.push(newUser);
+        localStorage.setItem(storageKey, JSON.stringify(lecturers));
         
-        setSuccessMsg('Registration Successful! Account is now synced to the Cloud.');
+        setSuccessMsg('Account Initialized Successfully! You can now log in.');
         setTimeout(() => {
           setIsRegistering(false);
           setSuccessMsg('');
@@ -69,35 +57,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         }, 2000);
 
       } else {
-        // Login Logic - Pull from Cloud
-        const response = await fetch(`${CLOUD_URL}${normalizedCode}`);
+        const user = lecturers.find(l => l.courseCode === normalizedCode);
         
-        if (response.status === 404) {
-          setErrorMsg("Account not found. If this is your first time, please use the 'Create Account' option below.");
+        if (!user) {
+          setErrorMsg("Lecturer account not found. Please create an account first.");
           setIsLoading(false);
           return;
         }
-
-        if (!response.ok) {
-          throw new Error("Cloud connection interrupted.");
-        }
         
-        const cloudUser: User = await response.json();
-        
-        if (cloudUser && cloudUser.password === formData.password) {
-          // Sync local storage for persistence on this device
-          localStorage.setItem('lasustech_user', JSON.stringify(cloudUser));
-          onLogin(cloudUser);
+        if (user.password === formData.password) {
+          onLogin(user);
         } else {
           setErrorMsg("Security key is incorrect for this Course Code.");
         }
         setIsLoading(false);
       }
-    } catch (err) {
-      console.error(err);
-      setErrorMsg("Connection Error: Unable to reach LASUSTECH Cloud. Check your data connection.");
-      setIsLoading(false);
-    }
+    }, 800);
   };
 
   return (
@@ -106,7 +81,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         <div className="absolute top-0 right-0 p-5">
           <div className="flex items-center gap-1.5 text-blue-500">
             <Globe size={14} className="animate-pulse" />
-            <span className="text-[8px] font-black uppercase tracking-widest">Global Cloud</span>
+            <span className="text-[8px] font-black uppercase tracking-widest text-nowrap">Global Cloud</span>
           </div>
         </div>
 
@@ -227,10 +202,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
           </button>
 
           <div className="pt-4 border-t border-slate-50">
-            <div className="inline-flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-              <Globe size={10} className="text-blue-400" />
-              <span className="text-[8px] font-black text-blue-600 uppercase tracking-tighter">
-                Institutional Sync Active (Cross-Device)
+            <div className="inline-flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
+              <ShieldCheck size={10} className="text-slate-400" />
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                Secure Offline Mode Active
               </span>
             </div>
           </div>
