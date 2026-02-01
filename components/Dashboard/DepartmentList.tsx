@@ -15,17 +15,17 @@ const DepartmentList: React.FC<DepartmentListProps> = ({ college, onBack, onSele
       <div className="flex gap-4 mb-10 items-start">
         <button 
           onClick={onBack}
-          className="w-12 h-12 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white hover:text-blue-500 transition-all mt-2"
+          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white hover:text-blue-500 transition-all mt-1"
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={18} className="sm:size-5" />
         </button>
         <div className="flex gap-3">
-          <div className="w-2 h-20 bg-yellow-400 rounded-full"></div>
+          <div className="w-1.5 h-16 sm:h-20 bg-yellow-400 rounded-full"></div>
           <div>
             <p className="text-[10px] font-black text-blue-400 tracking-[0.2em] uppercase mb-1">
               College Administrative Units
             </p>
-            <h1 className="text-3xl font-black text-slate-800 leading-tight">
+            <h1 className="text-xl sm:text-3xl font-black text-slate-800 leading-tight">
               {college.name}
             </h1>
           </div>
@@ -37,10 +37,10 @@ const DepartmentList: React.FC<DepartmentListProps> = ({ college, onBack, onSele
           <button
             key={dept.id}
             onClick={() => onSelect(dept)}
-            className="bg-white p-6 rounded-[28px] shadow-lg shadow-slate-100 border border-slate-50 flex items-center justify-between group hover:shadow-xl transition-all"
+            className="bg-white p-5 sm:p-6 rounded-[24px] sm:rounded-[28px] shadow-lg shadow-slate-100 border border-slate-50 flex items-center justify-between group hover:shadow-xl transition-all"
           >
             <div>
-              <h3 className="text-lg font-extrabold text-slate-700 group-hover:text-blue-600 transition-colors">
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-700 group-hover:text-blue-600 transition-colors">
                 {dept.name}
               </h3>
               <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest mt-1 flex items-center gap-1">
@@ -49,8 +49,8 @@ const DepartmentList: React.FC<DepartmentListProps> = ({ college, onBack, onSele
             </div>
             <div className="text-yellow-500 opacity-20 group-hover:opacity-100 transition-opacity">
               <div className="flex gap-1">
-                <ChevronRight size={20} />
-                <ChevronRight size={20} className="-ml-3" />
+                <ChevronRight size={18} className="sm:size-5" />
+                <ChevronRight size={18} className="sm:size-5 -ml-3" />
               </div>
             </div>
           </button>
