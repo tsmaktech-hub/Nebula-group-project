@@ -2,43 +2,86 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.42.0';
 
 /**
- * We use direct process.env literals here. 
- * Many build tools (like Vercel's or Vite) perform a literal string replacement 
- * and will only find variables if they are written exactly as 'process.env.NAME'.
+ * Robustly retrieves environment variables from multiple possible sources
+ * commonly used in modern frontend deployments.
  */
-const RAW_URL = process.env.SUPABASE_URL || (process.env as any).NEXT_PUBLIC_SUPABASE_URL || '';
-const RAW_KEY = process.env.SUPABASE_ANON_KEY || (process.env as any).NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const getEnv = (key: string): string => {
+  try {
+    // 1. Try standard process.env (Bundlers/Node)
+    const processEnv = (typeof process !== 'undefined' ? process.env : null) || (window as any).process?.env;
+    if (processEnv?.[key]) return String(processEnv[key]).trim();
 
-// Clean the strings (remove quotes or whitespace if injected incorrectly)
-const clean = (val: string) => val.replace(/['"]/g, '').trim();
+    // 2. Try import.meta.env (Vite/ESM Standard)
+    const metaEnv = (import.meta as any).env;
+    if (metaEnv?.[key]) return String(metaEnv[key]).trim();
+    if (metaEnv?.[`VITE_${key}`]) return String(metaEnv[`VITE_${key}`]).trim();
 
-export const SUPABASE_URL = clean(RAW_URL);
-export const SUPABASE_ANON_KEY = clean(RAW_KEY);
+    // 3. Try common public prefixes
+    if (processEnv?.[`NEXT_PUBLIC_${key}`]) return String(processEnv[`NEXT_PUBLIC_${key}`]).trim();
+    if (processEnv?.[`REACT_APP_${key}`]) return String(processEnv[`REACT_APP_${key}`]).trim();
 
-// Diagnostics for the browser console to help you debug
-if (typeof window !== 'undefined') {
-  console.group('🛠 LASUSTECH Portal: Cloud Sync Status');
-  console.log('Target URL:', SUPABASE_URL ? '✅ Detected' : '❌ Missing');
-  console.log('Security Key:', SUPABASE_ANON_KEY ? '✅ Detected' : '❌ Missing');
-  console.log('Build Environment:', typeof process !== 'undefined' ? 'Node/Transpiler' : 'Browser-Only');
-  console.groupEnd();
-}
+    // 4. Try window globals (sometimes used for runtime injection)
+    const winEnv = (window as any).__ENV__ || (window as any).env;
+    if (winEnv?.[key]) return String(winEnv[key]).trim();
+  } catch (e) {
+    // Silent catch to prevent app crash during detection
+  }
+  return '';
+};
+
+const getStoredConfig = () => {
+  const url = localStorage.getItem('supabase_url') || getEnv('SUPABASE_URL');
+  const key = localStorage.getItem('supabase_anon_key') || getEnv('SUPABASE_ANON_KEY');
+  return { url, key };
+};
+
+// Initial config check
+let { url: currentUrl, key: currentKey } = getStoredConfig();
+
+// Diagnostics (Hidden in production usually, but helpful for setup)
+console.group('🛠 LASUSTECH Portal: Database Diagnostics');
+console.log('Supabase URL detected:', currentUrl ? '✅ FOUND' : '❌ MISSING');
+console.log('Anon Key detected:', currentKey ? `✅ FOUND (${currentKey.slice(0, 8)}...)` : '❌ MISSING');
+console.groupEnd();
 
 // Initialize client
-// If variables are missing, we use placeholders to prevent the app from crashing on boot,
-// but operations will fail gracefully via the isSupabaseConfigured() check.
-export const supabase = createClient(
-  SUPABASE_URL || 'https://placeholder.supabase.co', 
-  SUPABASE_ANON_KEY || 'placeholder'
+export let supabase = createClient(
+  currentUrl || 'https://placeholder.supabase.co', 
+  currentKey || 'placeholder'
 );
 
 /**
- * Validates if the credentials are present and look correct.
+ * Validates if the configuration is active and working.
  */
 export const isSupabaseConfigured = () => {
-  return (
-    SUPABASE_URL.length > 10 && 
-    SUPABASE_URL.startsWith('http') && 
-    SUPABASE_ANON_KEY.length > 20
-  );
+  const { url, key } = getStoredConfig();
+  
+  // Re-sync local variables if they were found via getEnv but not yet in memory
+  if (url && key && (url !== currentUrl || key !== currentKey)) {
+    currentUrl = url;
+    currentKey = key;
+    supabase = createClient(url, key);
+  }
+
+  const hasUrl = url && url.length > 10 && (url.startsWith('http') || url.includes('.supabase.co'));
+  const hasKey = key && key.length > 20;
+  return !!(hasUrl && hasKey);
+};
+
+/**
+ * Manually updates the configuration (used for the setup UI fallback).
+ */
+export const updateSupabaseConfig = (url: string, key: string) => {
+  const cleanUrl = url.trim();
+  const cleanKey = key.trim();
+  localStorage.setItem('supabase_url', cleanUrl);
+  localStorage.setItem('supabase_anon_key', cleanKey);
+  
+  // Update internal state and re-initialize client
+  currentUrl = cleanUrl;
+  currentKey = cleanKey;
+  supabase = createClient(cleanUrl, cleanKey);
+  
+  console.log('🚀 Database configuration updated manually.');
+  return true;
 };

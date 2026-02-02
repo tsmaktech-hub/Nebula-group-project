@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, CheckCircle2, Loader2, AlertCircle, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User as UserIcon, Lock, Hash, ArrowRight, CheckCircle2, Loader2, AlertCircle, Globe, Database, Settings, Save, RefreshCw } from 'lucide-react';
 import { User } from '../../types';
-import { supabase, isSupabaseConfigured, SUPABASE_URL } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured, updateSupabaseConfig } from '../../lib/supabase';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -11,8 +11,15 @@ interface AuthPageProps {
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(isSupabaseConfigured());
+  const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  
+  const [dbConfig, setDbConfig] = useState({
+    url: localStorage.getItem('supabase_url') || '',
+    key: localStorage.getItem('supabase_anon_key') || ''
+  });
 
   const [formData, setFormData] = useState({
     name: '',
@@ -21,11 +28,49 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     password: ''
   });
 
+  // Auto-detection of environment variables
+  useEffect(() => {
+    const checkConfig = () => {
+      if (isSupabaseConfigured()) {
+        setIsConfigured(true);
+        setShowConfig(false);
+      }
+    };
+    
+    // Check once on mount
+    checkConfig();
+    
+    // Short interval check in case keys are injected asynchronously
+    const timer = setTimeout(checkConfig, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (dbConfig.url && dbConfig.key) {
+      updateSupabaseConfig(dbConfig.url, dbConfig.key);
+      setIsConfigured(true);
+      setShowConfig(false);
+      setErrorMsg('');
+    } else {
+      setErrorMsg("Both URL and Anon Key are required.");
+    }
+  };
+
+  const handleManualCheck = () => {
+    if (isSupabaseConfigured()) {
+      setIsConfigured(true);
+      setShowConfig(false);
+      setErrorMsg('');
+    } else {
+      setErrorMsg("Environment variables not detected yet. Please enter them manually below.");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!isSupabaseConfigured()) {
-      setErrorMsg(`Database connection not found. Please ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in your environment variables. (Current URL: ${SUPABASE_URL || 'None'})`);
+    if (!isConfigured) {
+      setErrorMsg("Please configure your database connection first.");
       return;
     }
 
@@ -46,7 +91,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         if (checkError) throw checkError;
 
         if (existing) {
-          setErrorMsg("This account (Course & Key) is already registered.");
+          setErrorMsg("This exact account (Course & Key) is already registered.");
           setIsLoading(false);
           return;
         }
@@ -94,137 +139,209 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Cloud Connection Error. Verify database status and environment variables.");
+      setErrorMsg(err.message || "Database Error. Please check your Supabase settings and table structure.");
       setIsLoading(false);
     }
   };
 
-  const configured = isSupabaseConfigured();
-
   return (
     <div className="flex flex-col items-center justify-center p-4 min-h-[85vh]">
-      <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-6 sm:p-10 border border-slate-100 relative">
-        <div className="absolute top-0 right-0 p-6 flex gap-2">
-          <div className="flex items-center gap-1.5 text-blue-500">
-            <Globe size={14} className={configured ? "animate-pulse" : "text-slate-300"} />
-            <span className={`text-[8px] font-black uppercase tracking-widest ${configured ? "text-blue-500" : "text-slate-300"}`}>
-              {configured ? "Sync Ready" : "Config Missing"}
-            </span>
-          </div>
+      {showConfig ? (
+        <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden border border-blue-100 p-8 animate-in zoom-in-95 duration-300">
+           <div className="flex items-center gap-4 mb-6">
+             <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
+               <Database size={24} />
+             </div>
+             <div>
+               <h2 className="text-xl font-black text-slate-800">Database Setup</h2>
+               <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Setup Required</p>
+             </div>
+           </div>
+
+           <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-6">
+              <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1 flex items-center gap-2">
+                Note <AlertCircle size={10} />
+              </p>
+              <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                We couldn't automatically detect your environment variables. Please provide your Supabase details below or click refresh to check again.
+              </p>
+           </div>
+
+           <form onSubmit={handleSaveConfig} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Supabase URL</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-xs"
+                  placeholder="https://xyz.supabase.co"
+                  value={dbConfig.url}
+                  onChange={(e) => setDbConfig({...dbConfig, url: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Anon Public Key</label>
+                <textarea 
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-xs h-24 resize-none"
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                  value={dbConfig.key}
+                  onChange={(e) => setDbConfig({...dbConfig, key: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={handleManualCheck}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-[10px] uppercase tracking-widest"
+                >
+                  <RefreshCw size={14} />
+                  Re-Check
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-[10px] uppercase tracking-widest shadow-lg shadow-blue-100"
+                >
+                  <Save size={14} />
+                  Save & Connect
+                </button>
+              </div>
+           </form>
+           
+           <p className="mt-6 text-[9px] text-center text-slate-400 font-bold uppercase tracking-tighter">
+             Institutional Cloud Sync v2.5
+           </p>
         </div>
-
-        <div className="flex flex-col items-center mb-8 sm:mb-10">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-200 mb-6 rotate-3">
-            <UserIcon size={32} className="text-white -rotate-3" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-800 text-center leading-tight">
-            {isRegistering ? 'Initialize Portal' : 'Lecturer Login'}
-          </h1>
-          <p className="text-blue-500 font-black text-[9px] tracking-[0.4em] uppercase mt-2">
-            LASUSTECH Academic Sync
-          </p>
-        </div>
-
-        {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2">
-            <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
-            <p className="text-red-700 text-xs font-bold leading-tight">{errorMsg}</p>
-          </div>
-        )}
-
-        {successMsg ? (
-          <div className="py-12 flex flex-col items-center text-center space-y-4 animate-in fade-in">
-            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-              <CheckCircle2 size={32} />
+      ) : (
+        <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-6 sm:p-10 border border-slate-100 relative">
+          <div className="absolute top-0 right-0 p-6 flex gap-2">
+            <button 
+              onClick={() => setShowConfig(true)}
+              className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
+              title="Database Settings"
+            >
+              <Settings size={18} />
+            </button>
+            <div className="flex items-center gap-1.5 text-blue-500">
+              <Globe size={14} className="animate-pulse" />
+              <span className="text-[8px] font-black uppercase tracking-widest">Sync Ready</span>
             </div>
-            <p className="text-slate-600 font-extrabold text-sm px-4">{successMsg}</p>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {isRegistering && (
+
+          <div className="flex flex-col items-center mb-8 sm:mb-10">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-200 mb-6 rotate-3">
+              <UserIcon size={32} className="text-white -rotate-3" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-800 text-center leading-tight">
+              {isRegistering ? 'Initialize Portal' : 'Lecturer Login'}
+            </h1>
+            <p className="text-blue-500 font-black text-[9px] tracking-[0.4em] uppercase mt-2">
+              LASUSTECH Academic Sync
+            </p>
+          </div>
+
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2">
+              <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-red-700 text-xs font-bold leading-tight">{errorMsg}</p>
+            </div>
+          )}
+
+          {successMsg ? (
+            <div className="py-12 flex flex-col items-center text-center space-y-4 animate-in fade-in">
+              <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                <CheckCircle2 size={32} />
+              </div>
+              <p className="text-slate-600 font-extrabold text-sm px-4">{successMsg}</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {isRegistering && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Full Name</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
+                      <UserIcon size={18} />
+                    </div>
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
+                      placeholder="e.g. Dr. Samuel Kola"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Full Name</label>
+                <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Course Code</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
-                    <UserIcon size={18} />
+                    <Hash size={18} />
                   </div>
                   <input 
                     type="text" 
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
-                    placeholder="e.g. Dr. Samuel Kola"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-black uppercase text-sm"
+                    placeholder="e.g. MTH102"
                     required
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    value={formData.courseCode}
+                    onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
                   />
                 </div>
               </div>
-            )}
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Course Code</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
-                  <Hash size={18} />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Security Key</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
+                    <Lock size={18} />
+                  </div>
+                  <input 
+                    type="password" 
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
+                    placeholder="••••••••"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  />
                 </div>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-black uppercase text-sm"
-                  placeholder="e.g. MTH102"
-                  required
-                  value={formData.courseCode}
-                  onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
-                />
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Security Key</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
-                  <Lock size={18} />
-                </div>
-                <input 
-                  type="password" 
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
-                  placeholder="••••••••"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                />
-              </div>
-            </div>
+              <button 
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-blue-100 transition-all active:scale-95 text-sm uppercase tracking-[0.2em] mt-4"
+              >
+                {isLoading ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : isRegistering ? 'Register Cloud Account' : 'Secure Access'}
+                {!isLoading && <ArrowRight size={18} />}
+              </button>
+            </form>
+          )}
 
+          <div className="mt-10 text-center">
             <button 
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-blue-100 transition-all active:scale-95 text-sm uppercase tracking-[0.2em] mt-4"
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setSuccessMsg('');
+                setErrorMsg('');
+                setFormData({ ...formData, password: '' });
+              }}
+              className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-2 mx-auto transition-colors"
             >
-              {isLoading ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : isRegistering ? 'Register Cloud Account' : 'Secure Access'}
-              {!isLoading && <ArrowRight size={18} />}
+              {isRegistering ? (
+                <>Already have a key? <span className="text-blue-600 underline">Login</span></>
+              ) : (
+                <>New lecturer? <span className="text-blue-600 underline">Get Registered</span></>
+              )}
             </button>
-          </form>
-        )}
-
-        <div className="mt-10 text-center">
-          <button 
-            onClick={() => {
-              setIsRegistering(!isRegistering);
-              setSuccessMsg('');
-              setErrorMsg('');
-              setFormData({ ...formData, password: '' });
-            }}
-            className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-2 mx-auto transition-colors"
-          >
-            {isRegistering ? (
-              <>Already have a key? <span className="text-blue-600 underline">Login</span></>
-            ) : (
-              <>New lecturer? <span className="text-blue-600 underline">Get Registered</span></>
-            )}
-          </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
