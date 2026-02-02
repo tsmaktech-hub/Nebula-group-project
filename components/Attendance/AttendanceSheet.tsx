@@ -24,7 +24,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
 
   const fetchAttendanceData = useCallback(async () => {
     if (!configured) {
-      setDbError("Database not configured. Please return to login and set up your Supabase connection.");
+      setDbError("Database environment variables are missing. Cloud sync is disabled.");
       setIsLoading(false);
       return;
     }
@@ -297,9 +297,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           </button>
 
           <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-widest text-center max-w-xs leading-relaxed">
-            {configured 
-              ? "Data is now synced globally across devices. Your records are stored in the secure university cloud." 
-              : "Database connection required for cloud synchronization."}
+            Data is synced globally across devices using the secure institutional cloud.
           </p>
         </div>
       </div>
