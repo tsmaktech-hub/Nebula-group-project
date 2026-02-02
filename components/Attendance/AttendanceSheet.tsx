@@ -20,9 +20,11 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   const [showSuccess, setShowSuccess] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
+  const configured = isSupabaseConfigured();
+
   const fetchAttendanceData = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setDbError("Supabase keys not found in environment.");
+    if (!configured) {
+      setDbError("Database not configured. Please return to login and set up your Supabase connection.");
       setIsLoading(false);
       return;
     }
@@ -90,11 +92,11 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       setStudents(formattedStudents);
     } catch (err: any) {
       console.error("Fetch Error:", err);
-      setDbError(err.message || "Database connection failure.");
+      setDbError(err.message || "Cloud connection failure.");
     } finally {
       setIsLoading(false);
     }
-  }, [dept.id, course.code]);
+  }, [dept.id, course.code, configured]);
 
   useEffect(() => {
     fetchAttendanceData();
@@ -108,7 +110,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   };
 
   const handleSave = async () => {
-    if (markedIds.size === 0 || !isSupabaseConfigured) return;
+    if (markedIds.size === 0 || !configured) return;
     setIsSaving(true);
     
     try {
@@ -195,16 +197,16 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
              </div>
              <div className="text-right">
                <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Database Sync</p>
-               <p className="text-base sm:text-lg font-black uppercase">{isSupabaseConfigured ? 'Online Safe' : 'Offline'}</p>
+               <p className="text-base sm:text-lg font-black uppercase">{configured ? 'Online Safe' : 'Offline'}</p>
              </div>
            </div>
            
            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
              <div className="flex-1 flex items-center justify-between bg-blue-700/40 rounded-[16px] sm:rounded-[20px] p-3 sm:p-4 border border-blue-400/20">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <div className={`w-2 h-2 rounded-full ${configured ? 'bg-green-400' : 'bg-red-400'}`}></div>
                   <span className="text-[9px] font-black uppercase tracking-widest text-green-300">
-                    {isSupabaseConfigured ? 'Live Connection Active' : 'No Connection'}
+                    {configured ? 'Live Connection Active' : 'No Connection'}
                   </span>
                 </div>
                 <div className="text-[9px] font-black uppercase text-blue-200">
@@ -269,9 +271,9 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           
           <button
             onClick={handleSave}
-            disabled={isSaving || markedIds.size === 0 || !isSupabaseConfigured}
+            disabled={isSaving || markedIds.size === 0 || !configured}
             className={`w-full max-w-sm py-4 sm:py-5 rounded-2xl flex items-center justify-center gap-3 sm:gap-4 font-bold text-xs sm:text-sm uppercase tracking-widest shadow-2xl transition-all transform active:scale-95 border-b-4 ${
-              isSaving || markedIds.size === 0 || !isSupabaseConfigured
+              isSaving || markedIds.size === 0 || !configured
                 ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed' 
                 : 'bg-blue-600 text-white hover:bg-blue-700 border-blue-800 shadow-blue-200'
             }`}
@@ -295,7 +297,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           </button>
 
           <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-widest text-center max-w-xs leading-relaxed">
-            {isSupabaseConfigured 
+            {configured 
               ? "Data is now synced globally across devices. Your records are stored in the secure university cloud." 
               : "Database connection required for cloud synchronization."}
           </p>

@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Loader2, AlertCircle, Globe, Database } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User as UserIcon, Lock, Hash, ArrowRight, CheckCircle2, Loader2, AlertCircle, Globe, Database, Settings, Save } from 'lucide-react';
 import { User } from '../../types';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured, updateSupabaseConfig } from '../../lib/supabase';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -11,8 +11,16 @@ interface AuthPageProps {
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(isSupabaseConfigured());
+  const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  
+  const [dbConfig, setDbConfig] = useState({
+    url: localStorage.getItem('supabase_url') || '',
+    key: localStorage.getItem('supabase_anon_key') || ''
+  });
+
   const [formData, setFormData] = useState({
     name: '',
     courseCode: '',
@@ -20,10 +28,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     password: ''
   });
 
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (dbConfig.url && dbConfig.key) {
+      updateSupabaseConfig(dbConfig.url, dbConfig.key);
+      setIsConfigured(true);
+      setShowConfig(false);
+      setErrorMsg('');
+    } else {
+      setErrorMsg("Both URL and Anon Key are required.");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSupabaseConfigured) {
-      setErrorMsg("Database keys (SUPABASE_URL/ANON_KEY) are not configured in the environment.");
+    if (!isConfigured) {
+      setErrorMsg("Please configure your database connection first.");
       return;
     }
 
@@ -90,153 +110,194 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "An error occurred with the database connection.");
+      setErrorMsg(err.message || "Database Error. Please check your credentials.");
       setIsLoading(false);
     }
   };
 
   return (
     <div className="flex flex-col items-center justify-center p-4 min-h-[85vh]">
-      {!isSupabaseConfigured && (
-        <div className="mb-6 w-full max-w-md bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-4">
-          <Database className="text-amber-500 shrink-0 mt-0.5" size={18} />
-          <div>
-            <p className="text-amber-900 font-black text-[10px] uppercase tracking-widest mb-1">Database Connection Required</p>
-            <p className="text-amber-700 text-xs font-medium leading-relaxed">
-              Supabase environment variables (SUPABASE_URL and SUPABASE_ANON_KEY) are missing. Cloud synchronization is currently disabled.
+      {showConfig ? (
+        <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden border border-blue-100 p-8 animate-in zoom-in-95 duration-300">
+           <div className="flex items-center gap-4 mb-6">
+             <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
+               <Database size={24} />
+             </div>
+             <div>
+               <h2 className="text-xl font-black text-slate-800">Database Setup</h2>
+               <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Initialization Required</p>
+             </div>
+           </div>
+
+           <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">
+             To sync data across devices, please provide your Supabase connection details from your project settings.
+           </p>
+
+           <form onSubmit={handleSaveConfig} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Supabase URL</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-xs"
+                  placeholder="https://xyz.supabase.co"
+                  value={dbConfig.url}
+                  onChange={(e) => setDbConfig({...dbConfig, url: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Anon Public Key</label>
+                <textarea 
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-xs h-24 resize-none"
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                  value={dbConfig.key}
+                  onChange={(e) => setDbConfig({...dbConfig, key: e.target.value})}
+                  required
+                />
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest shadow-lg shadow-blue-100"
+              >
+                <Save size={16} />
+                Connect to Cloud
+              </button>
+           </form>
+           
+           <p className="mt-6 text-[9px] text-center text-slate-400 font-bold uppercase tracking-tighter">
+             Settings are stored locally in your browser
+           </p>
+        </div>
+      ) : (
+        <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-6 sm:p-10 border border-slate-100 relative">
+          <div className="absolute top-0 right-0 p-6 flex gap-2">
+            <button 
+              onClick={() => setShowConfig(true)}
+              className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
+              title="Database Settings"
+            >
+              <Settings size={18} />
+            </button>
+            <div className="flex items-center gap-1.5 text-blue-500">
+              <Globe size={14} className="animate-pulse" />
+              <span className="text-[8px] font-black uppercase tracking-widest">Cloud Active</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center mb-8 sm:mb-10">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-200 mb-6 rotate-3">
+              <UserIcon size={32} className="text-white -rotate-3" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-800 text-center leading-tight">
+              {isRegistering ? 'New Account' : 'Lecturer Portal'}
+            </h1>
+            <p className="text-blue-500 font-black text-[9px] tracking-[0.4em] uppercase mt-2">
+              LASUSTECH Academic Sync
             </p>
           </div>
-        </div>
-      )}
 
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8 border border-slate-100 relative">
-        <div className="absolute top-0 right-0 p-5">
-          <div className="flex items-center gap-1.5 text-blue-500">
-            <Globe size={14} className="animate-pulse" />
-            <span className="text-[8px] font-black uppercase tracking-widest text-nowrap">Cloud Sync</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center mb-6 sm:mb-8">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-100 mb-4 rotate-3">
-            <UserIcon size={28} className="text-white -rotate-3 sm:size-10" />
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 text-center leading-tight">
-            {isRegistering ? 'Initialize Account' : 'Lecturer Login'}
-          </h1>
-          <p className="text-blue-500 font-bold text-[9px] tracking-[0.3em] uppercase mt-1">
-            {isSupabaseConfigured ? 'Global Database Active' : 'Offline Mode Only'}
-          </p>
-        </div>
-
-        {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
-            <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
-            <p className="text-red-700 text-xs font-bold leading-tight">{errorMsg}</p>
-          </div>
-        )}
-
-        {successMsg ? (
-          <div className="py-12 flex flex-col items-center text-center space-y-4 animate-in fade-in duration-500">
-            <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-              <CheckCircle2 size={24} />
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2">
+              <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-red-700 text-xs font-bold leading-tight">{errorMsg}</p>
             </div>
-            <p className="text-slate-600 font-bold text-sm px-4">{successMsg}</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {isRegistering && (
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-blue-950 uppercase tracking-widest pl-1">Full Name</label>
+          )}
+
+          {successMsg ? (
+            <div className="py-12 flex flex-col items-center text-center space-y-4 animate-in fade-in">
+              <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                <CheckCircle2 size={32} />
+              </div>
+              <p className="text-slate-600 font-extrabold text-sm px-4">{successMsg}</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {isRegistering && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Full Name</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
+                      <UserIcon size={18} />
+                    </div>
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
+                      placeholder="e.g. Dr. Kolawole"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Course Code</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
-                    <UserIcon size={16} />
+                    <Hash size={18} />
                   </div>
                   <input 
                     type="text" 
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
-                    placeholder="e.g. Dr. Samuel Kola"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-black uppercase text-sm"
+                    placeholder="e.g. MEC101"
                     required
-                    disabled={isLoading || !isSupabaseConfigured}
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    value={formData.courseCode}
+                    onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
                   />
                 </div>
               </div>
-            )}
 
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-blue-950 uppercase tracking-widest pl-1">
-                Course Code
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
-                  <Hash size={16} />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-blue-900 uppercase tracking-widest pl-1">Security Key</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
+                    <Lock size={18} />
+                  </div>
+                  <input 
+                    type="password" 
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
+                    placeholder="••••••••"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  />
                 </div>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold uppercase text-sm"
-                  placeholder="e.g. CHM102"
-                  required
-                  disabled={isLoading || !isSupabaseConfigured}
-                  value={formData.courseCode}
-                  onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
-                />
               </div>
-            </div>
 
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-blue-950 uppercase tracking-widest pl-1">Security Key</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-400">
-                  <Lock size={16} />
-                </div>
-                <input 
-                  type="password" 
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
-                  placeholder="••••••••"
-                  required
-                  disabled={isLoading || !isSupabaseConfigured}
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                />
-              </div>
-            </div>
+              <button 
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-blue-100 transition-all active:scale-95 text-sm uppercase tracking-[0.2em] mt-4"
+              >
+                {isLoading ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : isRegistering ? 'Register Cloud' : 'Secure Login'}
+                {!isLoading && <ArrowRight size={18} />}
+              </button>
+            </form>
+          )}
 
+          <div className="mt-10 text-center">
             <button 
-              type="submit"
-              disabled={isLoading || !isSupabaseConfigured}
-              className={`w-full font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all group active:scale-95 text-sm mt-2 disabled:opacity-50 ${
-                isSupabaseConfigured ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-              }`}
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setSuccessMsg('');
+                setErrorMsg('');
+                setFormData({ ...formData, password: '' });
+              }}
+              className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-2 mx-auto transition-colors"
             >
-              {isLoading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : isRegistering ? 'Create Cloud Account' : 'Secure Access'}
-              {!isLoading && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+              {isRegistering ? (
+                <>Existing Lecturer? <span className="text-blue-600 underline">Login Here</span></>
+              ) : (
+                <>First time user? <span className="text-blue-600 underline">Setup Portal</span></>
+              )}
             </button>
-          </form>
-        )}
-
-        <div className="mt-8 text-center space-y-4">
-          <button 
-            onClick={() => {
-              setIsRegistering(!isRegistering);
-              setSuccessMsg('');
-              setErrorMsg('');
-              setFormData({ ...formData, password: '' });
-            }}
-            disabled={!isSupabaseConfigured}
-            className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-1 mx-auto disabled:opacity-50"
-          >
-            {isRegistering ? (
-              <>Already registered? <span className="text-blue-500 underline">Login</span></>
-            ) : (
-              <>New lecturer? <span className="text-blue-500 underline">Create Account</span></>
-            )}
-          </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
