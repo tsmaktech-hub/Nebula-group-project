@@ -112,7 +112,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             {isRegistering ? 'Initialize Portal' : 'Lecturer Login'}
           </h1>
           <p className="text-blue-500 font-black text-[9px] tracking-[0.4em] uppercase mt-2">
-            LASUSTECH Academic Sync
+            Attendance portal v2.1
           </p>
         </div>
 
@@ -192,7 +192,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             >
               {isLoading ? (
                 <Loader2 size={20} className="animate-spin" />
-              ) : isRegistering ? 'Register Cloud Account' : 'Secure Access'}
+              ) : isRegistering ? 'Register Account' : 'Secure Access'}
               {!isLoading && <ArrowRight size={18} />}
             </button>
           </form>
@@ -211,7 +211,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             {isRegistering ? (
               <>Already have a key? <span className="text-blue-600 underline">Login</span></>
             ) : (
-              <>New lecturer? <span className="text-blue-600 underline">Get Registered</span></>
+              <>New Lead Lecturer? <span className="text-blue-600 underline">Get Registered</span></>
             )}
           </button>
         </div>
