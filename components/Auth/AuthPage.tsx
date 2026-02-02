@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, CheckCircle2, Loader2, AlertCircle, Globe, Database, Settings, Save } from 'lucide-react';
+import { User as UserIcon, Lock, Hash, ArrowRight, CheckCircle2, Loader2, AlertCircle, Globe, Database, Settings, Save, RefreshCw } from 'lucide-react';
 import { User } from '../../types';
 import { supabase, isSupabaseConfigured, updateSupabaseConfig } from '../../lib/supabase';
 
@@ -28,6 +28,23 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     password: ''
   });
 
+  // Auto-detection of environment variables
+  useEffect(() => {
+    const checkConfig = () => {
+      if (isSupabaseConfigured()) {
+        setIsConfigured(true);
+        setShowConfig(false);
+      }
+    };
+    
+    // Check once on mount
+    checkConfig();
+    
+    // Short interval check in case keys are injected asynchronously
+    const timer = setTimeout(checkConfig, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
     if (dbConfig.url && dbConfig.key) {
@@ -37,6 +54,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       setErrorMsg('');
     } else {
       setErrorMsg("Both URL and Anon Key are required.");
+    }
+  };
+
+  const handleManualCheck = () => {
+    if (isSupabaseConfigured()) {
+      setIsConfigured(true);
+      setShowConfig(false);
+      setErrorMsg('');
+    } else {
+      setErrorMsg("Environment variables not detected yet. Please enter them manually below.");
     }
   };
 
@@ -54,12 +81,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
     try {
       if (isRegistering) {
-        const { data: existing } = await supabase
+        const { data: existing, error: checkError } = await supabase
           .from('lecturers')
           .select('id')
           .eq('course_code', normalizedCode)
           .eq('security_key', formData.password)
           .maybeSingle();
+
+        if (checkError) throw checkError;
 
         if (existing) {
           setErrorMsg("This exact account (Course & Key) is already registered.");
@@ -110,7 +139,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Database Error. Please check your credentials.");
+      setErrorMsg(err.message || "Database Error. Please check your Supabase settings and table structure.");
       setIsLoading(false);
     }
   };
@@ -125,13 +154,18 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
              </div>
              <div>
                <h2 className="text-xl font-black text-slate-800">Database Setup</h2>
-               <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Initialization Required</p>
+               <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Setup Required</p>
              </div>
            </div>
 
-           <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">
-             To sync data across devices, please provide your Supabase connection details from your project settings.
-           </p>
+           <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-6">
+              <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1 flex items-center gap-2">
+                Note <AlertCircle size={10} />
+              </p>
+              <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                We couldn't automatically detect your environment variables. Please provide your Supabase details below or click refresh to check again.
+              </p>
+           </div>
 
            <form onSubmit={handleSaveConfig} className="space-y-4">
               <div className="space-y-1">
@@ -156,17 +190,27 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 />
               </div>
 
-              <button 
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest shadow-lg shadow-blue-100"
-              >
-                <Save size={16} />
-                Connect to Cloud
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={handleManualCheck}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-[10px] uppercase tracking-widest"
+                >
+                  <RefreshCw size={14} />
+                  Re-Check
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-[10px] uppercase tracking-widest shadow-lg shadow-blue-100"
+                >
+                  <Save size={14} />
+                  Save & Connect
+                </button>
+              </div>
            </form>
            
            <p className="mt-6 text-[9px] text-center text-slate-400 font-bold uppercase tracking-tighter">
-             Settings are stored locally in your browser
+             Institutional Cloud Sync v2.5
            </p>
         </div>
       ) : (
@@ -181,7 +225,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             </button>
             <div className="flex items-center gap-1.5 text-blue-500">
               <Globe size={14} className="animate-pulse" />
-              <span className="text-[8px] font-black uppercase tracking-widest">Cloud Active</span>
+              <span className="text-[8px] font-black uppercase tracking-widest">Sync Ready</span>
             </div>
           </div>
 
@@ -190,7 +234,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               <UserIcon size={32} className="text-white -rotate-3" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-800 text-center leading-tight">
-              {isRegistering ? 'New Account' : 'Lecturer Portal'}
+              {isRegistering ? 'Initialize Portal' : 'Lecturer Login'}
             </h1>
             <p className="text-blue-500 font-black text-[9px] tracking-[0.4em] uppercase mt-2">
               LASUSTECH Academic Sync
@@ -223,7 +267,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                     <input 
                       type="text" 
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
-                      placeholder="e.g. Dr. Kolawole"
+                      placeholder="e.g. Dr. Samuel Kola"
                       required
                       value={formData.name}
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -241,7 +285,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   <input 
                     type="text" 
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-black uppercase text-sm"
-                    placeholder="e.g. MEC101"
+                    placeholder="e.g. MTH102"
                     required
                     value={formData.courseCode}
                     onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
@@ -273,7 +317,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               >
                 {isLoading ? (
                   <Loader2 size={20} className="animate-spin" />
-                ) : isRegistering ? 'Register Cloud' : 'Secure Login'}
+                ) : isRegistering ? 'Register Cloud Account' : 'Secure Access'}
                 {!isLoading && <ArrowRight size={18} />}
               </button>
             </form>
@@ -290,9 +334,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-2 mx-auto transition-colors"
             >
               {isRegistering ? (
-                <>Existing Lecturer? <span className="text-blue-600 underline">Login Here</span></>
+                <>Already have a key? <span className="text-blue-600 underline">Login</span></>
               ) : (
-                <>First time user? <span className="text-blue-600 underline">Setup Portal</span></>
+                <>New lecturer? <span className="text-blue-600 underline">Get Registered</span></>
               )}
             </button>
           </div>
