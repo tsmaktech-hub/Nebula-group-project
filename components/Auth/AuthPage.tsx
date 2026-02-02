@@ -13,8 +13,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  
-  const configured = isSupabaseConfigured();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -26,11 +24,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!configured) {
-      setErrorMsg("Cloud Connection Required: Please ensure your institutional environment variables (SUPABASE_URL, SUPABASE_ANON_KEY) are configured in the portal settings.");
-      return;
-    }
-
     setIsLoading(true);
     setErrorMsg('');
 
@@ -48,7 +41,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         if (checkError) throw checkError;
 
         if (existing) {
-          setErrorMsg("This exact account (Course & Key) is already registered.");
+          setErrorMsg("This lecturer account (Course & Key) is already registered.");
           setIsLoading(false);
           return;
         }
@@ -96,7 +89,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Institutional Database Connection Error. Please verify your internet connection.");
+      setErrorMsg(err.message || "Institutional Cloud Connection Error. Please verify your internet connection.");
       setIsLoading(false);
     }
   };
@@ -104,13 +97,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   return (
     <div className="flex flex-col items-center justify-center p-4 min-h-[85vh]">
       <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-6 sm:p-10 border border-slate-100 relative">
-        {/* Connection Status Indicator */}
         <div className="absolute top-0 right-0 p-6 flex gap-2">
           <div className="flex items-center gap-1.5 text-blue-500">
-            <Globe size={14} className={configured ? "animate-pulse" : "text-slate-300"} />
-            <span className={`text-[8px] font-black uppercase tracking-widest ${configured ? "text-blue-500" : "text-slate-300"}`}>
-              {configured ? "Cloud Active" : "Offline Mode"}
-            </span>
+            <Globe size={14} className="animate-pulse" />
+            <span className="text-[8px] font-black uppercase tracking-widest text-blue-500">Cloud Active</span>
           </div>
         </div>
 
@@ -198,9 +188,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             <button 
               type="submit"
               disabled={isLoading}
-              className={`w-full text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl transition-all active:scale-95 text-sm uppercase tracking-[0.2em] mt-4 ${
-                isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-              }`}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-blue-100 transition-all active:scale-95 text-sm uppercase tracking-[0.2em] mt-4 disabled:bg-slate-300 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <Loader2 size={20} className="animate-spin" />

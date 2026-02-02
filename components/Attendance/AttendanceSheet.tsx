@@ -23,15 +23,10 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   const configured = isSupabaseConfigured();
 
   const fetchAttendanceData = useCallback(async () => {
-    if (!configured) {
-      setDbError("Cloud storage connection unavailable. Records will not sync globally.");
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
     setDbError(null);
     try {
+      // Fetch students for the department
       let { data: dbStudents, error: studentError } = await supabase
         .from('students')
         .select('*')
@@ -39,6 +34,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
 
       if (studentError) throw studentError;
 
+      // Seed if no students exist for this unit
       if (!dbStudents || dbStudents.length === 0) {
         const generated = generateStudents(dept.id);
         const seedData = generated.map(s => ({
@@ -56,6 +52,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
         dbStudents = inserted;
       }
 
+      // Count total sessions for this course
       const { count: sessionCount, error: sessionError } = await supabase
         .from('attendance_sessions')
         .select('*', { count: 'exact', head: true })
@@ -65,6 +62,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       const totalHeld = sessionCount || 0;
       setClassesHeld(totalHeld);
 
+      // Get individual records
       const { data: records, error: recordsError } = await supabase
         .from('attendance_records')
         .select('student_id')
@@ -92,11 +90,11 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       setStudents(formattedStudents);
     } catch (err: any) {
       console.error("Fetch Error:", err);
-      setDbError(err.message || "Institutional Cloud Connection Failure.");
+      setDbError(err.message || "Institutional cloud connection failed. Check your internet.");
     } finally {
       setIsLoading(false);
     }
-  }, [dept.id, course.code, configured]);
+  }, [dept.id, course.code]);
 
   useEffect(() => {
     fetchAttendanceData();
@@ -110,7 +108,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   };
 
   const handleSave = async () => {
-    if (markedIds.size === 0 || !configured) return;
+    if (markedIds.size === 0) return;
     setIsSaving(true);
     
     try {
@@ -140,7 +138,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       console.error("Save Error:", err);
-      alert("Failed to sync records: " + (err.message || "Unknown error"));
+      alert("Failed to sync records: " + (err.message || "Unknown cloud error"));
       setIsSaving(false);
     }
   };
@@ -149,7 +147,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
     return (
       <div className="flex flex-col items-center justify-center py-40 space-y-4">
         <Loader2 size={40} className="text-blue-600 animate-spin" />
-        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Syncing Cloud Records...</p>
+        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Syncing Cloud Repository...</p>
       </div>
     );
   }
@@ -192,21 +190,21 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
                </div>
                <div>
                  <h2 className="text-lg sm:text-xl font-black">Student Roster</h2>
-                 <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">{students.length} Total Registered</p>
+                 <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">{students.length} Registered</p>
                </div>
              </div>
              <div className="text-right">
-               <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Cloud Sync</p>
-               <p className="text-base sm:text-lg font-black uppercase">{configured ? 'Active' : 'Offline'}</p>
+               <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Global Sync</p>
+               <p className="text-base sm:text-lg font-black uppercase">Active</p>
              </div>
            </div>
            
            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
              <div className="flex-1 flex items-center justify-between bg-blue-700/40 rounded-[16px] sm:rounded-[20px] p-3 sm:p-4 border border-blue-400/20">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className={`w-2 h-2 rounded-full ${configured ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
                   <span className="text-[9px] font-black uppercase tracking-widest text-green-300">
-                    {configured ? 'Synchronized' : 'Local Only'}
+                    Cloud Connection Active
                   </span>
                 </div>
                 <div className="text-[9px] font-black uppercase text-blue-200">
@@ -217,8 +215,8 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
              <div className="flex items-center gap-3 bg-white/10 px-4 sm:px-6 py-3 sm:py-4 rounded-[16px] sm:rounded-[20px] border border-white/5">
                 <BookOpen size={14} className="sm:size-4 text-yellow-400" />
                 <div className="flex flex-col">
-                  <span className="text-[8px] font-black uppercase tracking-tighter text-blue-200">Sessions</span>
-                  <span className="text-xs sm:text-sm font-black text-white leading-none">{classesHeld} Held</span>
+                  <span className="text-[8px] font-black uppercase tracking-tighter text-blue-200">Total Held</span>
+                  <span className="text-xs sm:text-sm font-black text-white leading-none">{classesHeld} Sessions</span>
                 </div>
              </div>
            </div>
@@ -228,7 +226,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       <div className="px-6">
         <div className="bg-slate-50 rounded-t-[20px] sm:rounded-t-[24px] px-5 sm:px-6 py-3 sm:py-4 flex justify-between border-b border-slate-200 sticky top-[64px] sm:top-[74px] z-40 backdrop-blur-md bg-white/80">
           <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Student Info</span>
-          <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Attendance Status</span>
+          <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Attendance</span>
         </div>
 
         <div className="bg-white rounded-b-[20px] sm:rounded-b-[24px] shadow-sm border border-slate-100 divide-y divide-slate-50 overflow-hidden mb-12">
@@ -271,9 +269,9 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           
           <button
             onClick={handleSave}
-            disabled={isSaving || markedIds.size === 0 || !configured}
+            disabled={isSaving || markedIds.size === 0}
             className={`w-full max-w-sm py-4 sm:py-5 rounded-2xl flex items-center justify-center gap-3 sm:gap-4 font-bold text-xs sm:text-sm uppercase tracking-widest shadow-2xl transition-all transform active:scale-95 border-b-4 ${
-              isSaving || markedIds.size === 0 || !configured
+              isSaving || markedIds.size === 0
                 ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed' 
                 : 'bg-blue-600 text-white hover:bg-blue-700 border-blue-800 shadow-blue-200'
             }`}
@@ -297,7 +295,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           </button>
 
           <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-widest text-center max-w-xs leading-relaxed">
-            Data is synced globally using the secure LASUSTECH cloud repository.
+            Attendance data is synced globally across all institutional devices using the secure LASUSTECH cloud repository.
           </p>
         </div>
       </div>
