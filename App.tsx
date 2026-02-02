@@ -147,10 +147,11 @@ const App: React.FC = () => {
           />
         ) : null;
       case View.Attendance:
-        return selectedCourse && selectedDept ? (
+        return selectedCourse && selectedDept && currentUser ? (
           <AttendanceSheet 
             course={selectedCourse}
             dept={selectedDept}
+            user={currentUser}
             onBack={() => setCurrentView(View.Courses)}
           />
         ) : null;

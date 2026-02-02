@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, CheckCircle, Users, Loader2, Cloud, BookOpen, AlertCircle } from 'lucide-react';
-import { Course, Department, Student } from '../../types';
+import { ArrowLeft, Save, CheckCircle, Users, Loader2, Cloud, BookOpen, AlertCircle, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import { Course, Department, Student, User } from '../../types';
 import { generateStudents } from '../../data/studentData';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface AttendanceSheetProps {
   course: Course;
   dept: Department;
+  user: User;
   onBack: () => void;
 }
 
-const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack }) => {
+const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, user, onBack }) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [classesHeld, setClassesHeld] = useState<number>(0);
   const [markedIds, setMarkedIds] = useState<Set<string>>(new Set());
@@ -19,6 +20,12 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+
+  // Reset Modal State
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   const configured = isSupabaseConfigured();
 
@@ -143,6 +150,44 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
     }
   };
 
+  const handleResetHistory = async () => {
+    if (resetPassword !== user.password) {
+      setResetError("Invalid Security Key. Reset denied.");
+      return;
+    }
+
+    setIsResetting(true);
+    setResetError('');
+
+    try {
+      // Delete records first
+      const { error: recordsDeleteError } = await supabase
+        .from('attendance_records')
+        .delete()
+        .eq('course_code', course.code);
+
+      if (recordsDeleteError) throw recordsDeleteError;
+
+      // Delete sessions
+      const { error: sessionsDeleteError } = await supabase
+        .from('attendance_sessions')
+        .delete()
+        .eq('course_code', course.code);
+
+      if (sessionsDeleteError) throw sessionsDeleteError;
+
+      setShowResetModal(false);
+      setResetPassword('');
+      await fetchAttendanceData();
+      alert("Course History Successfully Purged for the new semester.");
+    } catch (err: any) {
+      console.error("Reset Error:", err);
+      setResetError(err.message || "Database purge failed.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-40 space-y-4">
@@ -154,6 +199,63 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
 
   return (
     <div className="max-w-4xl mx-auto pb-32">
+      {/* Reset Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={() => !isResetting && setShowResetModal(false)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] sm:rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8">
+              <div className="flex justify-between items-start mb-6">
+                <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 shadow-sm">
+                  <ShieldCheck size={28} />
+                </div>
+                <button onClick={() => setShowResetModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <h2 className="text-xl font-black text-slate-900 mb-2">Purge History</h2>
+              <p className="text-slate-500 text-[11px] font-bold uppercase tracking-tight mb-8 leading-relaxed">
+                Delete all records for <span className="text-red-600 underline">{course.code}</span> to start a new semester?
+              </p>
+
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Security Key Required</label>
+                  <input 
+                    type="password"
+                    autoFocus
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl py-4 px-5 focus:border-red-500 focus:bg-white focus:outline-none font-black text-slate-900 text-sm shadow-inner transition-all placeholder:text-slate-300"
+                    placeholder="Enter Key to Authorize"
+                  />
+                </div>
+
+                {resetError && (
+                  <div className="p-3 bg-red-50 rounded-xl border border-red-100 flex items-center gap-2 animate-in slide-in-from-top-1">
+                    <AlertCircle size={14} className="text-red-500" />
+                    <p className="text-red-600 text-[10px] font-black uppercase">{resetError}</p>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <button 
+                    onClick={handleResetHistory}
+                    disabled={isResetting || !resetPassword}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-red-100 flex items-center justify-center gap-3 text-xs uppercase tracking-widest transition-all active:scale-95 disabled:bg-slate-200 disabled:shadow-none disabled:text-slate-400"
+                  >
+                    {isResetting ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                    Authorize Reset
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="h-2 bg-red-600 w-full opacity-10"></div>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 py-8 sm:py-10 bg-white shadow-sm mb-6 rounded-b-[32px] sm:rounded-b-[40px]">
         {dbError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-in fade-in">
@@ -162,24 +264,38 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           </div>
         )}
 
-        <div className="flex gap-4 mb-6 sm:mb-8 items-start">
-          <button 
-            onClick={onBack}
-            className="w-10 h-10 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[20px] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-blue-500 transition-all mt-1"
-          >
-            <ArrowLeft size={18} className="sm:size-5" />
-          </button>
-          <div className="flex gap-3">
-            <div className="w-1.5 h-12 sm:h-16 bg-blue-600 rounded-full"></div>
-            <div>
-              <p className="text-[10px] font-black text-blue-400 tracking-[0.3em] uppercase mb-1 flex items-center gap-2">
-                Cloud Repository <Cloud size={10} />
-              </p>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-800 leading-tight">
-                {course.title} ({course.code})
-              </h1>
+        <div className="flex gap-4 mb-6 sm:mb-8 items-start justify-between">
+          <div className="flex gap-4">
+            <button 
+              onClick={onBack}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[20px] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-blue-500 transition-all mt-1"
+            >
+              <ArrowLeft size={18} className="sm:size-5" />
+            </button>
+            <div className="flex gap-3">
+              <div className="w-1.5 h-12 sm:h-16 bg-blue-600 rounded-full"></div>
+              <div>
+                <p className="text-[10px] font-black text-blue-400 tracking-[0.3em] uppercase mb-1 flex items-center gap-2">
+                  Cloud Repository <Cloud size={10} />
+                </p>
+                <h1 className="text-xl sm:text-2xl font-black text-slate-800 leading-tight">
+                  {course.title} ({course.code})
+                </h1>
+              </div>
             </div>
           </div>
+
+          <button 
+            onClick={() => {
+              setResetPassword('');
+              setResetError('');
+              setShowResetModal(true);
+            }}
+            className="w-10 h-10 sm:w-12 sm:h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm active:scale-95 border border-red-100"
+            title="Reset Semester History"
+          >
+            <RotateCcw size={18} />
+          </button>
         </div>
 
         <div className="bg-blue-600 rounded-[28px] sm:rounded-[35px] overflow-hidden shadow-2xl shadow-blue-100 text-white p-6 sm:p-8">
