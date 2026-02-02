@@ -24,7 +24,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
 
   const fetchAttendanceData = useCallback(async () => {
     if (!configured) {
-      setDbError("Database not configured. Please return to login and set up your Supabase connection.");
+      setDbError("Cloud storage connection unavailable. Records will not sync globally.");
       setIsLoading(false);
       return;
     }
@@ -92,7 +92,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       setStudents(formattedStudents);
     } catch (err: any) {
       console.error("Fetch Error:", err);
-      setDbError(err.message || "Cloud connection failure.");
+      setDbError(err.message || "Institutional Cloud Connection Failure.");
     } finally {
       setIsLoading(false);
     }
@@ -196,8 +196,8 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
                </div>
              </div>
              <div className="text-right">
-               <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Database Sync</p>
-               <p className="text-base sm:text-lg font-black uppercase">{configured ? 'Online Safe' : 'Offline'}</p>
+               <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Cloud Sync</p>
+               <p className="text-base sm:text-lg font-black uppercase">{configured ? 'Active' : 'Offline'}</p>
              </div>
            </div>
            
@@ -206,19 +206,19 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
                 <div className="flex items-center gap-2 sm:gap-3">
                   <div className={`w-2 h-2 rounded-full ${configured ? 'bg-green-400' : 'bg-red-400'}`}></div>
                   <span className="text-[9px] font-black uppercase tracking-widest text-green-300">
-                    {configured ? 'Live Connection Active' : 'No Connection'}
+                    {configured ? 'Synchronized' : 'Local Only'}
                   </span>
                 </div>
                 <div className="text-[9px] font-black uppercase text-blue-200">
-                  {markedIds.size} Marked Now
+                  {markedIds.size} Marked
                 </div>
              </div>
              
              <div className="flex items-center gap-3 bg-white/10 px-4 sm:px-6 py-3 sm:py-4 rounded-[16px] sm:rounded-[20px] border border-white/5">
                 <BookOpen size={14} className="sm:size-4 text-yellow-400" />
                 <div className="flex flex-col">
-                  <span className="text-[8px] font-black uppercase tracking-tighter text-blue-200">Classes Held</span>
-                  <span className="text-xs sm:text-sm font-black text-white leading-none">{classesHeld} Sessions</span>
+                  <span className="text-[8px] font-black uppercase tracking-tighter text-blue-200">Sessions</span>
+                  <span className="text-xs sm:text-sm font-black text-white leading-none">{classesHeld} Held</span>
                 </div>
              </div>
            </div>
@@ -228,7 +228,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       <div className="px-6">
         <div className="bg-slate-50 rounded-t-[20px] sm:rounded-t-[24px] px-5 sm:px-6 py-3 sm:py-4 flex justify-between border-b border-slate-200 sticky top-[64px] sm:top-[74px] z-40 backdrop-blur-md bg-white/80">
           <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Student Info</span>
-          <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Record Status</span>
+          <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Attendance Status</span>
         </div>
 
         <div className="bg-white rounded-b-[20px] sm:rounded-b-[24px] shadow-sm border border-slate-100 divide-y divide-slate-50 overflow-hidden mb-12">
@@ -297,9 +297,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           </button>
 
           <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-widest text-center max-w-xs leading-relaxed">
-            {configured 
-              ? "Data is now synced globally across devices. Your records are stored in the secure university cloud." 
-              : "Database connection required for cloud synchronization."}
+            Data is synced globally using the secure LASUSTECH cloud repository.
           </p>
         </div>
       </div>
