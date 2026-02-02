@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Loader2, AlertCircle, Globe } from 'lucide-react';
+import { User as UserIcon, Lock, Hash, ArrowRight, ShieldCheck, CheckCircle2, Loader2, AlertCircle, Globe, Database } from 'lucide-react';
 import { User } from '../../types';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -19,40 +20,43 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     password: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      setErrorMsg("Database keys (SUPABASE_URL/ANON_KEY) are not configured in the environment.");
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg('');
 
-    // Simulate small delay for better UX feel
-    setTimeout(() => {
-      const normalizedCode = formData.courseCode.trim().toUpperCase();
-      const storageKey = 'registered_lecturers';
-      const rawData = localStorage.getItem(storageKey);
-      const lecturers: User[] = rawData ? JSON.parse(rawData) : [];
+    const normalizedCode = formData.courseCode.trim().toUpperCase();
 
+    try {
       if (isRegistering) {
-        // Allow multiple signups for the same course code.
-        // We only block if the exact combination of course code and security key already exists.
-        const duplicateEntry = lecturers.find(
-          l => l.courseCode === normalizedCode && l.password === formData.password
-        );
+        const { data: existing } = await supabase
+          .from('lecturers')
+          .select('id')
+          .eq('course_code', normalizedCode)
+          .eq('security_key', formData.password)
+          .maybeSingle();
 
-        if (duplicateEntry) {
-          setErrorMsg("This exact account (Course & Key) is already registered on this device.");
+        if (existing) {
+          setErrorMsg("This exact account (Course & Key) is already registered.");
           setIsLoading(false);
           return;
         }
 
-        const newUser: User = { 
-          ...formData, 
-          username: normalizedCode, // Distinguish username if needed, but here we use courseCode
-          courseCode: normalizedCode,
-        };
-        
-        lecturers.push(newUser);
-        localStorage.setItem(storageKey, JSON.stringify(lecturers));
-        
+        const { error: insertError } = await supabase
+          .from('lecturers')
+          .insert([{ 
+            name: formData.name, 
+            course_code: normalizedCode, 
+            security_key: formData.password 
+          }]);
+
+        if (insertError) throw insertError;
+
         setSuccessMsg('Account Initialized Successfully! You can now log in.');
         setTimeout(() => {
           setIsRegistering(false);
@@ -62,30 +66,54 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         }, 2000);
 
       } else {
-        // Login now requires finding a user that matches BOTH course code and security key
-        const user = lecturers.find(
-          l => l.courseCode === normalizedCode && l.password === formData.password
-        );
+        const { data: lecturer, error } = await supabase
+          .from('lecturers')
+          .select('*')
+          .eq('course_code', normalizedCode)
+          .eq('security_key', formData.password)
+          .maybeSingle();
+
+        if (error) throw error;
         
-        if (!user) {
+        if (!lecturer) {
           setErrorMsg("Invalid Course Code or Security Key combination.");
           setIsLoading(false);
           return;
         }
         
-        onLogin(user);
-        setIsLoading(false);
+        onLogin({
+          name: lecturer.name,
+          courseCode: lecturer.course_code,
+          username: lecturer.course_code,
+          password: lecturer.security_key
+        });
       }
-    }, 800);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "An error occurred with the database connection.");
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="flex flex-col items-center justify-center p-4 min-h-[85vh]">
+      {!isSupabaseConfigured && (
+        <div className="mb-6 w-full max-w-md bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-4">
+          <Database className="text-amber-500 shrink-0 mt-0.5" size={18} />
+          <div>
+            <p className="text-amber-900 font-black text-[10px] uppercase tracking-widest mb-1">Database Connection Required</p>
+            <p className="text-amber-700 text-xs font-medium leading-relaxed">
+              Supabase environment variables (SUPABASE_URL and SUPABASE_ANON_KEY) are missing. Cloud synchronization is currently disabled.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8 border border-slate-100 relative">
         <div className="absolute top-0 right-0 p-5">
           <div className="flex items-center gap-1.5 text-blue-500">
             <Globe size={14} className="animate-pulse" />
-            <span className="text-[8px] font-black uppercase tracking-widest text-nowrap">Global Cloud</span>
+            <span className="text-[8px] font-black uppercase tracking-widest text-nowrap">Cloud Sync</span>
           </div>
         </div>
 
@@ -97,7 +125,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             {isRegistering ? 'Initialize Account' : 'Lecturer Login'}
           </h1>
           <p className="text-blue-500 font-bold text-[9px] tracking-[0.3em] uppercase mt-1">
-            Attendance portal v2.1
+            {isSupabaseConfigured ? 'Global Database Active' : 'Offline Mode Only'}
           </p>
         </div>
 
@@ -129,7 +157,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
                     placeholder="e.g. Dr. Samuel Kola"
                     required
-                    disabled={isLoading}
+                    disabled={isLoading || !isSupabaseConfigured}
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                   />
@@ -150,7 +178,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold uppercase text-sm"
                   placeholder="e.g. CHM102"
                   required
-                  disabled={isLoading}
+                  disabled={isLoading || !isSupabaseConfigured}
                   value={formData.courseCode}
                   onChange={(e) => setFormData({...formData, courseCode: e.target.value.toUpperCase()})}
                 />
@@ -168,7 +196,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:border-blue-500 focus:bg-white focus:outline-none transition-all text-slate-800 font-bold text-sm"
                   placeholder="••••••••"
                   required
-                  disabled={isLoading}
+                  disabled={isLoading || !isSupabaseConfigured}
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
                 />
@@ -177,12 +205,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
             <button 
               type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-all group active:scale-95 text-sm mt-2 disabled:opacity-50"
+              disabled={isLoading || !isSupabaseConfigured}
+              className={`w-full font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all group active:scale-95 text-sm mt-2 disabled:opacity-50 ${
+                isSupabaseConfigured ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+              }`}
             >
               {isLoading ? (
                 <Loader2 size={18} className="animate-spin" />
-              ) : isRegistering ? 'Initialize Account' : 'Secure Access'}
+              ) : isRegistering ? 'Create Cloud Account' : 'Secure Access'}
               {!isLoading && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
             </button>
           </form>
@@ -196,7 +226,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               setErrorMsg('');
               setFormData({ ...formData, password: '' });
             }}
-            className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-1 mx-auto"
+            disabled={!isSupabaseConfigured}
+            className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center justify-center gap-1 mx-auto disabled:opacity-50"
           >
             {isRegistering ? (
               <>Already registered? <span className="text-blue-500 underline">Login</span></>
@@ -204,15 +235,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               <>New lecturer? <span className="text-blue-500 underline">Create Account</span></>
             )}
           </button>
-
-          <div className="pt-4 border-t border-slate-50">
-            <div className="inline-flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
-              <ShieldCheck size={10} className="text-slate-400" />
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                Secure Offline Mode Active
-              </span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

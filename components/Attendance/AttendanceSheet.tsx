@@ -1,18 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, CheckCircle, Users, Loader2, HardDrive, BookOpen } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Save, CheckCircle, Users, Loader2, Cloud, BookOpen, AlertCircle } from 'lucide-react';
 import { Course, Department, Student } from '../../types';
 import { generateStudents } from '../../data/studentData';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface AttendanceSheetProps {
   course: Course;
   dept: Department;
   onBack: () => void;
-}
-
-interface StorageData {
-  classesHeld: number;
-  students: Student[];
 }
 
 const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack }) => {
@@ -22,31 +18,87 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
 
-  const storageKey = `attendance_data_${dept.id}_${course.code.toLowerCase()}`;
+  const fetchAttendanceData = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setDbError("Supabase keys not found in environment.");
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setDbError(null);
+    try {
+      let { data: dbStudents, error: studentError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('dept_id', dept.id);
+
+      if (studentError) throw studentError;
+
+      if (!dbStudents || dbStudents.length === 0) {
+        const generated = generateStudents(dept.id);
+        const seedData = generated.map(s => ({
+          name: s.name,
+          matric_no: s.matricNo,
+          dept_id: dept.id
+        }));
+        
+        const { data: inserted, error: seedError } = await supabase
+          .from('students')
+          .insert(seedData)
+          .select();
+        
+        if (seedError) throw seedError;
+        dbStudents = inserted;
+      }
+
+      const { count: sessionCount, error: sessionError } = await supabase
+        .from('attendance_sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_code', course.code);
+
+      if (sessionError) throw sessionError;
+      const totalHeld = sessionCount || 0;
+      setClassesHeld(totalHeld);
+
+      const { data: records, error: recordsError } = await supabase
+        .from('attendance_records')
+        .select('student_id')
+        .eq('course_code', course.code);
+
+      if (recordsError) throw recordsError;
+
+      const recordCounts: Record<string, number> = {};
+      records?.forEach(r => {
+        recordCounts[r.student_id] = (recordCounts[r.student_id] || 0) + 1;
+      });
+
+      const formattedStudents: Student[] = (dbStudents || []).map((s: any) => {
+        const attended = recordCounts[s.id] || 0;
+        const perc = totalHeld > 0 ? (attended / totalHeld) * 100 : 0;
+        return {
+          id: s.id,
+          name: s.name,
+          matricNo: s.matric_no,
+          classesAttended: attended,
+          attendancePercentage: Math.round(perc * 100) / 100
+        };
+      });
+
+      setStudents(formattedStudents);
+    } catch (err: any) {
+      console.error("Fetch Error:", err);
+      setDbError(err.message || "Database connection failure.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dept.id, course.code]);
 
   useEffect(() => {
-    const fetchAttendance = () => {
-      setIsLoading(true);
-      
-      const cached = localStorage.getItem(storageKey);
-      if (cached) {
-        const data: StorageData = JSON.parse(cached);
-        setStudents(data.students || []);
-        setClassesHeld(data.classesHeld || 0);
-      } else {
-        const generated = generateStudents(dept.id);
-        setStudents(generated);
-        setClassesHeld(0);
-        const initialData: StorageData = { classesHeld: 0, students: generated };
-        localStorage.setItem(storageKey, JSON.stringify(initialData));
-      }
-      
-      setTimeout(() => setIsLoading(false), 600);
-    };
-
-    fetchAttendance();
-  }, [dept.id, course.code, storageKey]);
+    fetchAttendanceData();
+  }, [fetchAttendanceData]);
 
   const toggleStudent = (id: string) => {
     const next = new Set(markedIds);
@@ -55,48 +107,47 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
     setMarkedIds(next);
   };
 
-  const handleSave = () => {
-    if (markedIds.size === 0) return;
+  const handleSave = async () => {
+    if (markedIds.size === 0 || !isSupabaseConfigured) return;
     setIsSaving(true);
     
-    const nextClassesHeld = classesHeld + 1;
-    
-    const updatedStudents = students.map(s => {
-      const isPresent = markedIds.has(s.id);
-      const newClassesAttended = isPresent ? s.classesAttended + 1 : s.classesAttended;
-      const newPerc = (newClassesAttended / nextClassesHeld) * 100;
-      
-      return { 
-        ...s, 
-        classesAttended: newClassesAttended,
-        attendancePercentage: Math.round(newPerc * 100) / 100 
-      };
-    });
-    
-    setTimeout(() => {
-      setStudents(updatedStudents);
-      setClassesHeld(nextClassesHeld);
-      
-      const saveData: StorageData = {
-        classesHeld: nextClassesHeld,
-        students: updatedStudents
-      };
-      localStorage.setItem(storageKey, JSON.stringify(saveData));
-      
+    try {
+      const { error: sessionError } = await supabase
+        .from('attendance_sessions')
+        .insert([{ course_code: course.code }]);
+
+      if (sessionError) throw sessionError;
+
+      const attendanceEntries = Array.from(markedIds).map(studentId => ({
+        student_id: studentId,
+        course_code: course.code
+      }));
+
+      const { error: recordsError } = await supabase
+        .from('attendance_records')
+        .insert(attendanceEntries);
+
+      if (recordsError) throw recordsError;
+
       setIsSaving(false);
       setShowSuccess(true);
       setMarkedIds(new Set());
+      await fetchAttendanceData();
       
       setTimeout(() => setShowSuccess(false), 3000);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 800);
+    } catch (err: any) {
+      console.error("Save Error:", err);
+      alert("Failed to sync records: " + (err.message || "Unknown error"));
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-40 space-y-4">
         <Loader2 size={40} className="text-blue-600 animate-spin" />
-        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Loading Device Records...</p>
+        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Syncing Cloud Records...</p>
       </div>
     );
   }
@@ -104,6 +155,13 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
   return (
     <div className="max-w-4xl mx-auto pb-32">
       <div className="px-6 py-8 sm:py-10 bg-white shadow-sm mb-6 rounded-b-[32px] sm:rounded-b-[40px]">
+        {dbError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-in fade-in">
+            <AlertCircle className="text-red-500 shrink-0" size={18} />
+            <p className="text-red-800 text-[10px] font-bold uppercase tracking-widest">{dbError}</p>
+          </div>
+        )}
+
         <div className="flex gap-4 mb-6 sm:mb-8 items-start">
           <button 
             onClick={onBack}
@@ -115,7 +173,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
             <div className="w-1.5 h-12 sm:h-16 bg-blue-600 rounded-full"></div>
             <div>
               <p className="text-[10px] font-black text-blue-400 tracking-[0.3em] uppercase mb-1 flex items-center gap-2">
-                Local Archive <HardDrive size={10} />
+                Cloud Repository <Cloud size={10} />
               </p>
               <h1 className="text-xl sm:text-2xl font-black text-slate-800 leading-tight">
                 {course.title} ({course.code})
@@ -136,19 +194,21 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
                </div>
              </div>
              <div className="text-right">
-               <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Device Status</p>
-               <p className="text-base sm:text-lg font-black uppercase">Online Safe</p>
+               <p className="text-[8px] sm:text-[9px] font-black text-blue-200 uppercase tracking-widest">Database Sync</p>
+               <p className="text-base sm:text-lg font-black uppercase">{isSupabaseConfigured ? 'Online Safe' : 'Offline'}</p>
              </div>
            </div>
            
            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
              <div className="flex-1 flex items-center justify-between bg-blue-700/40 rounded-[16px] sm:rounded-[20px] p-3 sm:p-4 border border-blue-400/20">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-green-300">Internal Storage</span>
+                  <div className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-green-300">
+                    {isSupabaseConfigured ? 'Live Connection Active' : 'No Connection'}
+                  </span>
                 </div>
                 <div className="text-[9px] font-black uppercase text-blue-200">
-                  {markedIds.size} Selected
+                  {markedIds.size} Marked Now
                 </div>
              </div>
              
@@ -166,7 +226,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
       <div className="px-6">
         <div className="bg-slate-50 rounded-t-[20px] sm:rounded-t-[24px] px-5 sm:px-6 py-3 sm:py-4 flex justify-between border-b border-slate-200 sticky top-[64px] sm:top-[74px] z-40 backdrop-blur-md bg-white/80">
           <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Student Info</span>
-          <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Attendance Status</span>
+          <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">Record Status</span>
         </div>
 
         <div className="bg-white rounded-b-[20px] sm:rounded-b-[24px] shadow-sm border border-slate-100 divide-y divide-slate-50 overflow-hidden mb-12">
@@ -209,9 +269,9 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           
           <button
             onClick={handleSave}
-            disabled={isSaving || markedIds.size === 0}
+            disabled={isSaving || markedIds.size === 0 || !isSupabaseConfigured}
             className={`w-full max-w-sm py-4 sm:py-5 rounded-2xl flex items-center justify-center gap-3 sm:gap-4 font-bold text-xs sm:text-sm uppercase tracking-widest shadow-2xl transition-all transform active:scale-95 border-b-4 ${
-              isSaving || markedIds.size === 0 
+              isSaving || markedIds.size === 0 || !isSupabaseConfigured
                 ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed' 
                 : 'bg-blue-600 text-white hover:bg-blue-700 border-blue-800 shadow-blue-200'
             }`}
@@ -219,12 +279,12 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
             {isSaving ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                <span>Syncing...</span>
+                <span>Syncing Cloud...</span>
               </>
             ) : showSuccess ? (
               <>
                 <CheckCircle size={18} />
-                <span>Logged</span>
+                <span>Sync Successful</span>
               </>
             ) : (
               <>
@@ -235,7 +295,9 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ course, dept, onBack 
           </button>
 
           <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-widest text-center max-w-xs leading-relaxed">
-            Data is stored locally on this device. <br/> Records will persist until the browser cache is cleared.
+            {isSupabaseConfigured 
+              ? "Data is now synced globally across devices. Your records are stored in the secure university cloud." 
+              : "Database connection required for cloud synchronization."}
           </p>
         </div>
       </div>
