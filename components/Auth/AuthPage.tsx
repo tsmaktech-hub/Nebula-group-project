@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User as UserIcon, Lock, Hash, ArrowRight, CheckCircle2, Loader2, AlertCircle, Globe } from 'lucide-react';
 import { User } from '../../types';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured, SUPABASE_URL } from '../../lib/supabase';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -25,7 +25,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     e.preventDefault();
     
     if (!isSupabaseConfigured()) {
-      setErrorMsg("Cloud Sync Unavailable: Database environment variables (SUPABASE_URL, SUPABASE_ANON_KEY) are missing or incorrect.");
+      setErrorMsg(`Database connection not found. Please ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in your environment variables. (Current URL: ${SUPABASE_URL || 'None'})`);
       return;
     }
 
@@ -99,14 +99,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     }
   };
 
+  const configured = isSupabaseConfigured();
+
   return (
     <div className="flex flex-col items-center justify-center p-4 min-h-[85vh]">
       <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-6 sm:p-10 border border-slate-100 relative">
         <div className="absolute top-0 right-0 p-6 flex gap-2">
           <div className="flex items-center gap-1.5 text-blue-500">
-            <Globe size={14} className={isSupabaseConfigured() ? "animate-pulse" : "text-slate-300"} />
-            <span className={`text-[8px] font-black uppercase tracking-widest ${isSupabaseConfigured() ? "text-blue-500" : "text-slate-300"}`}>
-              {isSupabaseConfigured() ? "Sync Ready" : "Offline Mode"}
+            <Globe size={14} className={configured ? "animate-pulse" : "text-slate-300"} />
+            <span className={`text-[8px] font-black uppercase tracking-widest ${configured ? "text-blue-500" : "text-slate-300"}`}>
+              {configured ? "Sync Ready" : "Config Missing"}
             </span>
           </div>
         </div>

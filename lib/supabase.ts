@@ -2,54 +2,43 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.42.0';
 
 /**
- * Robustly retrieves environment variables from multiple possible sources
- * commonly used in modern frontend deployments (Vercel, Vite, ESM).
+ * We use direct process.env literals here. 
+ * Many build tools (like Vercel's or Vite) perform a literal string replacement 
+ * and will only find variables if they are written exactly as 'process.env.NAME'.
  */
-const getEnv = (key: string): string => {
-  try {
-    // 1. Try standard process.env (Bundlers/Node/Vercel)
-    const processEnv = (typeof process !== 'undefined' ? process.env : null) || (window as any).process?.env;
-    if (processEnv?.[key]) return String(processEnv[key]).trim();
+const RAW_URL = process.env.SUPABASE_URL || (process.env as any).NEXT_PUBLIC_SUPABASE_URL || '';
+const RAW_KEY = process.env.SUPABASE_ANON_KEY || (process.env as any).NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-    // 2. Try import.meta.env (Vite/ESM Standard)
-    const metaEnv = (import.meta as any).env;
-    if (metaEnv?.[key]) return String(metaEnv[key]).trim();
-    if (metaEnv?.[`VITE_${key}`]) return String(metaEnv[`VITE_${key}`]).trim();
+// Clean the strings (remove quotes or whitespace if injected incorrectly)
+const clean = (val: string) => val.replace(/['"]/g, '').trim();
 
-    // 3. Try common public prefixes
-    if (processEnv?.[`NEXT_PUBLIC_${key}`]) return String(processEnv[`NEXT_PUBLIC_${key}`]).trim();
-    if (processEnv?.[`REACT_APP_${key}`]) return String(processEnv[`REACT_APP_${key}`]).trim();
+export const SUPABASE_URL = clean(RAW_URL);
+export const SUPABASE_ANON_KEY = clean(RAW_KEY);
 
-    // 4. Try window globals
-    const winEnv = (window as any).__ENV__ || (window as any).env;
-    if (winEnv?.[key]) return String(winEnv[key]).trim();
-  } catch (e) {
-    // Silent catch
-  }
-  return '';
-};
+// Diagnostics for the browser console to help you debug
+if (typeof window !== 'undefined') {
+  console.group('🛠 LASUSTECH Portal: Cloud Sync Status');
+  console.log('Target URL:', SUPABASE_URL ? '✅ Detected' : '❌ Missing');
+  console.log('Security Key:', SUPABASE_ANON_KEY ? '✅ Detected' : '❌ Missing');
+  console.log('Build Environment:', typeof process !== 'undefined' ? 'Node/Transpiler' : 'Browser-Only');
+  console.groupEnd();
+}
 
-// Get values from environment only
-const url = getEnv('SUPABASE_URL');
-const key = getEnv('SUPABASE_ANON_KEY');
-
-// Diagnostics for the developer in the browser console
-console.group('🛠 LASUSTECH Portal: Cloud Sync Status');
-console.log('Target URL:', url ? '✅ Detected' : '❌ Missing (Check Vercel Env Vars)');
-console.log('Security Key:', key ? '✅ Detected' : '❌ Missing (Check Vercel Env Vars)');
-console.groupEnd();
-
-// Initialize client (using placeholders if missing to avoid crash, though it won't work)
+// Initialize client
+// If variables are missing, we use placeholders to prevent the app from crashing on boot,
+// but operations will fail gracefully via the isSupabaseConfigured() check.
 export const supabase = createClient(
-  url || 'https://placeholder.supabase.co', 
-  key || 'placeholder'
+  SUPABASE_URL || 'https://placeholder.supabase.co', 
+  SUPABASE_ANON_KEY || 'placeholder'
 );
 
 /**
- * Checks if the Supabase client has been provided with valid-looking credentials.
+ * Validates if the credentials are present and look correct.
  */
 export const isSupabaseConfigured = () => {
-  const currentUrl = getEnv('SUPABASE_URL');
-  const currentKey = getEnv('SUPABASE_ANON_KEY');
-  return !!(currentUrl && currentUrl.length > 10 && currentKey && currentKey.length > 20);
+  return (
+    SUPABASE_URL.length > 10 && 
+    SUPABASE_URL.startsWith('http') && 
+    SUPABASE_ANON_KEY.length > 20
+  );
 };
